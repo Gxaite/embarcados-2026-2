@@ -74,6 +74,11 @@ class GPIOFalso(types.ModuleType):
         return self.entradas.get(pino, 0)
 
     def PWM(self, pino, frequencia):
+        # A biblioteca de verdade recusa PWM em pino que nao foi configurado
+        # como saida. O falso precisa recusar tambem, senao o teste nao vale.
+        if pino not in self.saidas:
+            raise RuntimeError(
+                "You must setup() the GPIO channel as an output first")
         pwm = PWMFalso(pino, frequencia)
         self.pwms.append(pwm)
         return pwm
@@ -117,6 +122,12 @@ def test_traduz_os_resistores_internos(backend_rpi, gpio_falso):
 def test_traduz_as_bordas(backend_rpi, gpio_falso):
     backend_rpi.registra_interrupcao(pinos.ENC_A, bk.AMBAS, lambda p, v: None)
     assert gpio_falso.eventos[pinos.ENC_A][0] == gpio_falso.BOTH
+
+
+def test_pwm_exige_setup_de_saida_antes(backend_rpi, gpio_falso):
+    """cria_pwm() precisa configurar o pino como saida por conta propria."""
+    backend_rpi.cria_pwm(pinos.PWM, 1000)
+    assert pinos.PWM in gpio_falso.saidas
 
 
 def test_pwm_criado_a_1_khz_com_um_unico_start(backend_rpi, gpio_falso):

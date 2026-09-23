@@ -62,6 +62,9 @@ class BackendRPi(Backend):
         return 1 if self._GPIO.input(pino) else 0
 
     def cria_pwm(self, pino, frequencia_hz):
+        # A RPi.GPIO exige setup(OUT) ANTES de GPIO.PWM(); sem isso ela levanta
+        # "You must setup() the GPIO channel as an output first".
+        self.configura_saida(pino, 0)
         canal = _CanalPWMRPi(self._GPIO.PWM(pino, frequencia_hz))
         self._pwms.append(canal)
         return canal
