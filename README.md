@@ -29,7 +29,12 @@ dashboard web em tempo real. Os três barramentos do trabalho:
 
 - **GPIO** — motor (PWM + direção), encoder em quadratura, cortina, sensor de andar
 - **UART / MODBUS RTU** — registradores das cabines (`0x11`–`0x13`) e do prédio (`0x20`)
-- **I2C** — BMP280, e a escrita da Condição de Contorno que alimenta o watchdog
+- **I2C** — sensor de temperatura na Casa de Máquinas, e a escrita da Condição
+  de Contorno que alimenta o watchdog
+
+> Divergência a confirmar para a Entrega 2: o texto do enunciado fala em
+> **BMP280** e o diagrama de arquitetura em **BME280**. São sensores diferentes
+> (o BME também mede umidade) e o registrador de calibração não é o mesmo.
 
 ---
 
@@ -51,6 +56,22 @@ Entregáveis de toda entrega: **repositório com README e instruções de execu�
 Entrega 1, até 10 min na Final, **com a câmera aberta mostrando o rosto de todos
 os integrantes**.
 
+### Como entregar (Seção 4.1 do enunciado)
+
+A entrega é **no GitLab**, não neste repositório do GitHub:
+
+1. **Código** na branch `main`, e a entrega se dá pela **tag `v1.0`** no commit
+   correspondente:
+   ```bash
+   git tag -a v1.0 -m "Entrega 1 - Modulo da GPIO"
+   git push origin v1.0
+   ```
+2. **Vídeo** de até 5 min, no próprio repositório ou com link público
+   (YouTube, Drive) no README da entrega.
+
+> Este repositório do GitHub é público e existe só para levar o código até a
+> placa sem precisar de credencial. **A entrega avaliada é a do GitLab.**
+
 ---
 
 ## 3. Entrega 1 — o que precisa existir
@@ -62,16 +83,40 @@ Escopo reduzido: **Cabine 1**, andares 0, 1 e 2, nas posições **0, 3000 e
 
 | Sinal | Função | BCM | Pino físico | Direção |
 |:--|:--|:-:|:-:|:--|
-| `PWM` | potência do motor | 12 | 32 | saída PWM 1 kHz |
-| `DIR1` | direção 1 | 17 | 11 | saída on/off |
-| `DIR2` | direção 2 | 27 | 13 | saída on/off |
-| `ENC_A` | encoder canal A | 5 | 29 | entrada por interrupção |
-| `ENC_B` | encoder canal B | 6 | 31 | entrada por interrupção |
-| `CORTINA` | cortina de luz | 16 | 36 | entrada on/off |
-| `SENSOR_ANDAR` | bandeirola | 11 | 23 | entrada on/off |
+| `PWM` | potência do motor | **13** | 33 | saída PWM 1 kHz |
+| `DIR1` | direção 1 | **22** | 15 | saída on/off |
+| `DIR2` | direção 2 | **23** | 16 | saída on/off |
+| `ENC_A` | encoder canal A | **20** | 38 | entrada por interrupção |
+| `ENC_B` | encoder canal B | **21** | 40 | entrada por interrupção |
+| `CORTINA` | cortina de luz | **26** | 37 | entrada on/off |
+| `SENSOR_ANDAR` | bandeirola | **0** | 27 | entrada on/off |
 
-> **BCM ≠ pino físico.** `DIR1` é GPIO 17 no pino 11; `SENSOR_ANDAR` é GPIO 11 no
-> pino 23. Os dois trocam exatamente um pelo outro — é o erro clássico.
+> **BCM ≠ pino físico.** `SENSOR_ANDAR` é o GPIO 0, que fica no pino 27 — não no
+> pino 1. Contar pinos no conector achando que são números BCM é o erro clássico.
+
+### Divergência em aberto — pinagem antiga × nova
+
+O enunciado **trocou as colunas das Cabines 1 e 2** (commit *Mudança de Pinos —
+Cabine 1*). A tabela acima é a nova, e é o padrão do código. Mas o dashboard da
+bancada ainda rotula o Sensor de Andar como **"BCM 11"**, que é o número antigo.
+
+| Sinal | Antiga | Nova |
+|:--|:-:|:-:|
+| `PWM` | 12 | 13 |
+| `DIR1` | 17 | 22 |
+| `DIR2` | 27 | 23 |
+| `ENC_A` | 5 | 20 |
+| `ENC_B` | 6 | 21 |
+| `CORTINA` | 16 | 26 |
+| `SENSOR_ANDAR` | 11 | 0 |
+
+Enquanto o professor não confirmar, as duas estão selecionáveis. Dois minutos de
+bancada resolvem — a que reagir ao widget é a certa:
+
+```bash
+python3 -m ferramentas.bringup entradas --pinagem nova
+python3 -m ferramentas.bringup entradas --pinagem antiga
+```
 
 **Tabela de direção:** livre `00`, subir `10`, descer `01`, freio `11` (DIR1 DIR2).
 
@@ -137,9 +182,10 @@ Escopo reduzido: **Cabine 1**, andares 0, 1 e 2, nas posições **0, 3000 e
 
 | Pino | Função alternativa | Consequência |
 |:--|:--|:--|
-| BCM 11 (`SENSOR_ANDAR`, Cab. 1) | **SPI0 SCLK** | com SPI ligado, o pino não responde e **não há erro** |
-| BCM 7, 8 (encoder da Cab. 3) | SPI0 CE1/CE0 | idem |
-| BCM 0, 1 (`SENSOR_ANDAR` Cab. 2 e 3) | ID_SD/ID_SC, EEPROM de HAT | conferir se há shield no barramento |
+| **BCM 0** (`SENSOR_ANDAR`, Cab. 1) | **ID_SD — EEPROM de identificação de HAT** | a Raspberry Pi sonda esse pino no boot. Funciona como GPIO comum depois que o sistema sobe, **mas não se houver um shield com EEPROM no barramento**. É o pino a vigiar com a pinagem nova |
+| BCM 1 (`SENSOR_ANDAR`, Cab. 3) | ID_SC | idem |
+| BCM 7, 8 (encoder da Cab. 3) | SPI0 CE1/CE0 | com SPI ligado, o pino não responde e **não há erro** |
+| BCM 11 (`PWM` da Cab. 2) | SPI0 SCLK | idem |
 | BCM 2, 3 | I2C1 — BMP280 | habilitar I2C, não usar como GPIO |
 | BCM 14, 15 | UART — MODBUS | habilitar serial, **desabilitar o console** |
 
@@ -194,8 +240,25 @@ pelo requisito 8. Link da rasp42:
 https://tb.fse.lappis.rocks/dashboard/2f3c9990-b11b-11f1-9a0b-0359851b5c05?publicId=86d17ff0-e010-11ef-9ab8-4774ff1517e8
 ```
 
-Abas: `default`, `pr_dio_completo` (GPIO), `uart` (Entrega 2) e
-**`entrega_1___elevador`** — esta última é a da Entrega 1.
+Abas: **Elevador Único** (a da Entrega 1), **Terminal UART** (MODBUS, Entrega 2)
+e **Edifício** (prédio completo de 6 andares e 3 cabines, Entrega Final).
+
+Na aba **Elevador Único**, o painel "Bancada de Controle — Cabine 1" oferece:
+
+| Controle | Para que serve no nosso roteiro |
+|:--|:--|
+| **Enviar cabine ao andar 0 / 1 / 2** | move a cabine **sem passar pelo nosso código** — é como estimular `SENSOR_ANDAR` e o encoder antes de confiar no motor |
+| **Obstruir porta (3 s)** | o estímulo da cortina exigido pelo requisito 12 |
+| **Sensor de Andar** | mostra se a cabine está dentro da bandeirola ou entre andares |
+| **Ocupação (depuração)** | número de passageiros |
+| **Resetar bancada** | **zera a Posição sem mover a cabine** |
+
+> **"Resetar bancada" importa mais do que parece.** A posição da bancada é
+> absoluta e não começa em zero — ela guarda o que a sessão anterior deixou, e
+> pode estar negativa. Sem resetar no início do slot, a contagem do nosso
+> encoder e a do widget falam de referências diferentes, e todo o nivelamento
+> parece errado sem que haja nada errado no código. O painel também mostra
+> região de **sobrecurso** acima do andar 2.
 
 > **Confira sempre de qual placa é a aba aberta.** A URL do ThingsBoard carrega
 > o histórico de navegação no parâmetro `state`, e é fácil acabar com a aba do
@@ -205,7 +268,9 @@ Abas: `default`, `pr_dio_completo` (GPIO), `uart` (Entrega 2) e
 
 ### Estado conferido na rasp42 (23/09/2026)
 
-- SPI **desabilitado** → BCM 11 livre (`func=INPUT pull=NONE`)
+- SPI **desabilitado** — com a pinagem nova isso deixou de importar para a
+  Cabine 1 (o BCM 11 saiu), mas o **BCM 0** entrou e traz o conflito de EEPROM
+  de HAT descrito acima. A conferir na próxima sessão.
 - `RPi.GPIO 0.7.1a4` no Python do sistema — **não precisa de venv**
 
 ---

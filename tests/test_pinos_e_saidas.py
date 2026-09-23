@@ -1,18 +1,38 @@
 """Pinagem, tabela de direcao e saidas (requisitos 3 e 4)."""
+import pytest
+
 from src.gpio import pinos
 from src.gpio.saidas import SaidaDigital, SaidaPWM
 
 
-def test_pinos_da_tabela_1():
-    assert (pinos.PWM, pinos.DIR1, pinos.DIR2) == (12, 17, 27)
-    assert (pinos.ENC_A, pinos.ENC_B) == (5, 6)
-    assert (pinos.CORTINA, pinos.SENSOR_ANDAR) == (16, 11)
+def test_pinagem_nova_e_o_padrao():
+    """Tabela 1 atualizada: a Cabine 1 herdou a coluna que era da Cabine 2."""
+    assert pinos.pinagem_em_uso == "nova"
+    assert (pinos.PWM, pinos.DIR1, pinos.DIR2) == (13, 22, 23)
+    assert (pinos.ENC_A, pinos.ENC_B) == (20, 21)
+    assert (pinos.CORTINA, pinos.SENSOR_ANDAR) == (26, 0)
+
+
+def test_pinagem_antiga_continua_disponivel():
+    """O dashboard ainda rotula o Sensor de Andar como BCM 11."""
+    try:
+        pinos.aplica("antiga")
+        assert (pinos.PWM, pinos.DIR1, pinos.DIR2) == (12, 17, 27)
+        assert (pinos.ENC_A, pinos.ENC_B) == (5, 6)
+        assert (pinos.CORTINA, pinos.SENSOR_ANDAR) == (16, 11)
+    finally:
+        pinos.aplica("nova")
+
+
+def test_pinagem_desconhecida_e_recusada():
+    with pytest.raises(ValueError):
+        pinos.aplica("inventada")
 
 
 def test_bcm_nao_e_pino_fisico():
-    """Os dois que se trocam na montagem."""
-    assert pinos.PINO_FISICO[pinos.DIR1] == 11          # GPIO 17
-    assert pinos.PINO_FISICO[pinos.SENSOR_ANDAR] == 23  # GPIO 11
+    """O numero BCM nao e a posicao no conector."""
+    assert pinos.PINO_FISICO[pinos.DIR1] == 15           # BCM 22
+    assert pinos.PINO_FISICO[pinos.SENSOR_ANDAR] == 27   # BCM 0
 
 
 def test_tabela_de_direcao():
