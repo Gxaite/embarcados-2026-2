@@ -30,23 +30,25 @@ _TRANSICOES = {
 
 
 class EncoderQuadratura:
-    def __init__(self, backend, pino_a=pinos.ENC_A, pino_b=pinos.ENC_B):
+    def __init__(self, backend, pino_a=None, pino_b=None):
+        # Resolvidos aqui, e nao em argumento default, porque default e
+        # avaliado na importacao - antes de pinos.aplica() poder rodar.
         self._backend = backend
-        self.pino_a = pino_a
-        self.pino_b = pino_b
+        self.pino_a = pinos.ENC_A if pino_a is None else pino_a
+        self.pino_b = pinos.ENC_B if pino_b is None else pino_b
 
         self._trava = threading.Lock()
         self._contagem = 0
         self.transicoes_invalidas = 0
 
-        backend.configura_entrada(pino_a)
-        backend.configura_entrada(pino_b)
-        self._estado = (backend.le(pino_a) << 1) | backend.le(pino_b)
+        backend.configura_entrada(self.pino_a)
+        backend.configura_entrada(self.pino_b)
+        self._estado = (backend.le(self.pino_a) << 1) | backend.le(self.pino_b)
 
         # Interrupcao em AMBAS as bordas dos DOIS canais: e o que da a
         # quadratura 4x e o que o enunciado exige explicitamente.
-        backend.registra_interrupcao(pino_a, bk.AMBAS, self._na_borda)
-        backend.registra_interrupcao(pino_b, bk.AMBAS, self._na_borda)
+        backend.registra_interrupcao(self.pino_a, bk.AMBAS, self._na_borda)
+        backend.registra_interrupcao(self.pino_b, bk.AMBAS, self._na_borda)
 
     @property
     def contagem(self):

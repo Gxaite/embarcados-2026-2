@@ -34,28 +34,22 @@ def confirma(pergunta):
 
 
 def etapa_mapa(_backend=None):
-    barra("ETAPA 1 - PINAGEM DA CABINE 1")
+    barra("ETAPA 1 - PINAGEM DA CABINE 1 (%s)" % pinos.pinagem_em_uso.upper())
     print("  O numero BCM NAO e a posicao no conector. Confira fio a fio.\n")
     print("  %-14s %-8s %-14s %s" % ("SINAL", "BCM", "PINO FISICO", "FUNCAO"))
     print("  " + "-" * 58)
-    funcoes = {
-        pinos.PWM: "saida (PWM 1 kHz)",
-        pinos.DIR1: "saida on/off",
-        pinos.DIR2: "saida on/off",
-        pinos.ENC_A: "entrada (interrupcao)",
-        pinos.ENC_B: "entrada (interrupcao)",
-        pinos.CORTINA: "entrada on/off",
-        pinos.SENSOR_ANDAR: "entrada on/off",
-    }
-    for pino in (pinos.PWM, pinos.DIR1, pinos.DIR2, pinos.ENC_A,
-                 pinos.ENC_B, pinos.CORTINA, pinos.SENSOR_ANDAR):
+    for sinal in pinos.SINAIS:
+        bcm = getattr(pinos, sinal)
         print("  %-14s %-8d %-14d %s"
-              % (pinos.NOME[pino], pino, pinos.PINO_FISICO[pino], funcoes[pino]))
+              % (sinal, bcm, pinos.PINO_FISICO[bcm], pinos.FUNCAO[sinal]))
+    outra = "antiga" if pinos.pinagem_em_uso == "nova" else "nova"
     print("""
-  Os dois que se confundem:
-    DIR1         = GPIO 17 -> pino fisico 11
-    SENSOR_ANDAR = GPIO 11 -> pino fisico 23
-""", flush=True)
+  Pinagem em uso: %s. Para conferir a outra:
+    python3 -m ferramentas.bringup entradas --pinagem %s
+
+  Se o SENSOR_ANDAR nao reagir ao widget com uma, tente a outra: o enunciado
+  trocou as colunas das Cabines 1 e 2, mas o dashboard ainda rotula "BCM 11".
+""" % (pinos.pinagem_em_uso, outra), flush=True)
 
 
 def etapa_entradas(backend, segundos=30.0):
@@ -224,7 +218,11 @@ def main(argv=None):
                         help="ensaia o roteiro sem a placa")
     parser.add_argument("--segundos", type=float, default=30.0,
                         help="duracao das etapas de leitura (padrao: 30)")
+    parser.add_argument("--pinagem", choices=sorted(pinos.PINAGENS),
+                        default="nova",
+                        help="tabela de pinos a usar (padrao: nova)")
     args = parser.parse_args(argv)
+    pinos.aplica(args.pinagem)
 
     if args.etapa == "mapa":
         etapa_mapa()

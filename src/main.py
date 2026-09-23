@@ -10,6 +10,7 @@ import sys
 
 from . import cli
 from .controle.cabine import Cabine
+from .gpio import pinos
 
 
 def cria_backend(simulado, posicao_inicial_mm):
@@ -28,7 +29,11 @@ def main(argv=None):
                         help="usa o modelo do poco em software (sem placa)")
     parser.add_argument("--posicao-inicial", type=float, default=0.0,
                         help="posicao inicial da cabine em mm (padrao: 0)")
+    parser.add_argument("--pinagem", choices=sorted(pinos.PINAGENS),
+                        default="nova",
+                        help="tabela de pinos da Cabine 1 (padrao: nova)")
     args = parser.parse_args(argv)
+    pinos.aplica(args.pinagem)
 
     backend, e_simulador = cria_backend(args.simulado, args.posicao_inicial)
     cabine = Cabine(backend, posicao_inicial_mm=args.posicao_inicial)
