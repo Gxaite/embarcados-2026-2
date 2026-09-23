@@ -193,10 +193,23 @@ def etapa_pwm(backend):
 
 def etapa_limpa(backend):
     barra("LIMPEZA DA GPIO")
+    pwm = SaidaPWM(backend, pinos.PWM)
+    pwm.ajusta(0.0)
     for pino in (pinos.DIR1, pinos.DIR2):
         SaidaDigital(backend, pino, 1)       # freio
-    backend.limpa()
-    print("  GPIO liberada. Pode dar exit no SSH.", flush=True)
+    pwm.finaliza()
+    # DIR1/DIR2 NAO entram na limpeza. Pino liberado volta a ser entrada e
+    # flutua, e na rasp42 a combinacao flutuante e lida como DESCER: a cabine
+    # despenca sozinha depois que o programa sai. Deixa-los em alta (freio) e o
+    # unico estado de repouso seguro desta bancada.
+    backend.limpa(preserva=(pinos.DIR1, pinos.DIR2))
+    print("""
+  PWM zerado, GPIO liberada, DIR1/DIR2 mantidos em FREIO.
+
+  Os dois pinos de direcao ficam de proposito configurados como saida em alta.
+  Se forem liberados, viram entrada, flutuam, e a bancada le isso como DESCER -
+  a cabine cai sozinha. Pode dar exit no SSH.
+""", flush=True)
 
 
 ETAPAS = {

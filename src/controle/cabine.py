@@ -162,4 +162,6 @@ class Cabine:
         self.cortina.finaliza()
         self.sensor_andar.finaliza()
         self.encoder.finaliza()
-        self._backend.limpa()
+        # DIR1/DIR2 ficam de fora da limpeza, segurando o freio: liberados,
+        # eles flutuam e a bancada le a combinacao solta como DESCER.
+        self._backend.limpa(preserva=(pinos.DIR1, pinos.DIR2))

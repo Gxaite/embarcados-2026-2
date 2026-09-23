@@ -66,9 +66,15 @@ class Backend(ABC):
         """Cancela a interrupcao registrada no pino."""
 
     @abstractmethod
-    def limpa(self):
-        """Libera todos os recursos de GPIO.
+    def limpa(self, preserva=()):
+        """Libera os recursos de GPIO, menos os pinos listados em preserva.
 
         Obrigatorio ao encerrar: as placas do laboratorio sao compartilhadas e
         um pino deixado configurado atrapalha o proximo da fila.
+
+        O preserva existe por um motivo medido na bancada: liberar um pino o
+        devolve a entrada, e entrada sem sinal FLUTUA. Na rasp42 a combinacao
+        flutuante de DIR1/DIR2 e lida pelo simulador como DESCER, e a cabine
+        despenca sozinha depois que o programa sai. Manter os dois pinos de
+        direcao em alta (freio) e o unico estado de repouso seguro.
         """
