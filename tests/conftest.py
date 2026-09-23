@@ -65,8 +65,9 @@ class BackendFalso(Backend):
     def remove_interrupcao(self, pino):
         self.interrupcoes.pop(pino, None)
 
-    def limpa(self):
+    def limpa(self, preserva=()):
         self.limpou = True
+        self.preservados = tuple(preserva)
 
     # ------------------------------------------------- dirigido pelo teste
     def provoca(self, pino, valor):

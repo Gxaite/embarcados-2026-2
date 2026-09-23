@@ -102,7 +102,7 @@ class BackendSimulado(Backend):
         with self._trava:
             self._interrupcoes.pop(pino, None)
 
-    def limpa(self):
+    def limpa(self, preserva=()):
         self._parar.set()
         self._fisica.join(timeout=1.0)
         with self._trava:

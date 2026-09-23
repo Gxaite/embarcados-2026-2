@@ -89,8 +89,9 @@ class GPIOFalso(types.ModuleType):
     def remove_event_detect(self, pino):
         self.eventos.pop(pino, None)
 
-    def cleanup(self):
+    def cleanup(self, canais=None):
         self.limpou = True
+        self.limpos = list(canais) if canais is not None else "todos"
 
 
 @pytest.fixture
@@ -158,7 +159,19 @@ def test_limpa_libera_a_gpio(backend_rpi, gpio_falso):
     canal.ajusta(10.0)
     backend_rpi.limpa()
     assert gpio_falso.limpou is True
+    assert gpio_falso.limpos == "todos"
     assert ("stop", None) in gpio_falso.pwms[0].chamadas
+
+
+def test_limpa_preserva_os_pinos_pedidos(backend_rpi, gpio_falso):
+    """Pino liberado vira entrada e flutua; o freio tem que continuar de pe."""
+    backend_rpi.configura_saida(pinos.DIR1, 1)
+    backend_rpi.configura_saida(pinos.DIR2, 1)
+    backend_rpi.configura_entrada(pinos.CORTINA)
+    backend_rpi.limpa(preserva=(pinos.DIR1, pinos.DIR2))
+    assert pinos.CORTINA in gpio_falso.limpos
+    assert pinos.DIR1 not in gpio_falso.limpos
+    assert pinos.DIR2 not in gpio_falso.limpos
 
 
 def test_cabine_inteira_sobre_o_backend_da_placa(gpio_falso):
@@ -167,6 +180,7 @@ def test_cabine_inteira_sobre_o_backend_da_placa(gpio_falso):
     from src.gpio.rpi_backend import BackendRPi
 
     cabine = Cabine(BackendRPi())
+    dir1, dir2 = pinos.DIR1, pinos.DIR2
     try:
         assert set(gpio_falso.eventos) == {pinos.ENC_A, pinos.ENC_B,
                                            pinos.CORTINA, pinos.SENSOR_ANDAR}
@@ -178,3 +192,8 @@ def test_cabine_inteira_sobre_o_backend_da_placa(gpio_falso):
     finally:
         cabine.finaliza()
     assert gpio_falso.limpou is True
+    # DIR1/DIR2 ficam fora da limpeza segurando o freio: liberados, flutuam e a
+    # bancada le a combinacao solta como DESCER (medido na rasp42).
+    assert dir1 not in gpio_falso.limpos and dir2 not in gpio_falso.limpos
+    assert gpio_falso.saidas[dir1] == 1 and gpio_falso.saidas[dir2] == 1
+    assert pinos.PWM in gpio_falso.limpos

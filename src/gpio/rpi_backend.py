@@ -36,6 +36,7 @@ class BackendRPi(Backend):
         GPIO.setmode(GPIO.BCM)       # BCM, nunca BOARD
         GPIO.setwarnings(False)
         self._pwms = []
+        self._pinos_configurados = set()
 
         self._pull = {
             backend.SEM_PULL: GPIO.PUD_OFF,
@@ -49,10 +50,12 @@ class BackendRPi(Backend):
         }
 
     def configura_saida(self, pino, valor_inicial=0):
+        self._pinos_configurados.add(pino)
         self._GPIO.setup(pino, self._GPIO.OUT,
                          initial=self._GPIO.HIGH if valor_inicial else self._GPIO.LOW)
 
     def configura_entrada(self, pino, pull=backend.SEM_PULL):
+        self._pinos_configurados.add(pino)
         self._GPIO.setup(pino, self._GPIO.IN, pull_up_down=self._pull[pull])
 
     def escreve(self, pino, valor):
@@ -80,8 +83,16 @@ class BackendRPi(Backend):
     def remove_interrupcao(self, pino):
         self._GPIO.remove_event_detect(pino)
 
-    def limpa(self):
+    def limpa(self, preserva=()):
         for canal in self._pwms:
             canal.finaliza()
         self._pwms = []
-        self._GPIO.cleanup()
+        if not preserva:
+            self._GPIO.cleanup()
+            return
+        # cleanup() aceita lista de canais: limpamos todos menos os
+        # preservados, que continuam como saida segurando o nivel atual.
+        preserva = set(preserva)
+        alvos = [p for p in self._pinos_configurados if p not in preserva]
+        if alvos:
+            self._GPIO.cleanup(alvos)
