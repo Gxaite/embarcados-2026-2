@@ -27,7 +27,13 @@ GANHO_P = 0.06                 # duty por mm de erro
 DUTY_MAXIMO = 60.0
 DUTY_DE_APROXIMACAO = 15.0     # teto nos ultimos milimetros
 DISTANCIA_DE_APROXIMACAO_MM = 300.0
-MARGEM_DE_FIM_DE_CURSO_MM = 5.0
+# Margem do fim de curso no acionamento MANUAL.
+#
+# Medido na rasp42: comandando "motor subir" ate o limite, a cabine parou em
+# 6010 mm com margem de 5 mm - a inercia levou 15 mm alem do ponto de corte.
+# No acionamento direto nao ha rampa de aproximacao freando antes, entao a
+# margem precisa absorver a frenagem inteira sozinha.
+MARGEM_DE_FIM_DE_CURSO_MM = 25.0
 
 # Travamento: motor comandado, cabine sem sair do lugar.
 #
@@ -180,14 +186,21 @@ class Cabine:
                          % (agora - self._parado_desde, self.motor.duty, mm))
 
     def _supervisiona_fim_de_curso(self):
-        """Roda em TODO ciclo, inclusive sem viagem em andamento."""
+        """Roda em TODO ciclo, inclusive sem viagem em andamento.
+
+        A margem so vale no acionamento manual. Em malha fechada o destino ja
+        foi validado dentro do poco e o controle proporcional freia sozinho na
+        aproximacao - aplicar a margem ali cortaria a viagem antes de chegar
+        aos andares extremos, que estao exatamente em 0 e 6000 mm.
+        """
         mm = self.posicao_mm
+        margem = 0.0 if self._destino_mm is not None else MARGEM_DE_FIM_DE_CURSO_MM
         subindo = self.motor.direcao == pinos.SUBIR
         descendo = self.motor.direcao == pinos.DESCER
-        if subindo and mm >= posicao.TOPO_MM - MARGEM_DE_FIM_DE_CURSO_MM:
+        if subindo and mm >= posicao.TOPO_MM - margem:
             self._aborta("FIM DE CURSO: movimento interrompido no topo do poco "
                          "(%d mm)" % posicao.TOPO_MM)
-        elif descendo and mm <= posicao.FUNDO_MM + MARGEM_DE_FIM_DE_CURSO_MM:
+        elif descendo and mm <= posicao.FUNDO_MM + margem:
             self._aborta("FIM DE CURSO: movimento interrompido no fundo do poco "
                          "(%d mm)" % posicao.FUNDO_MM)
 
