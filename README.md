@@ -340,6 +340,36 @@ sair                     encerra o programa em seguranca
 
 Na bancada, a cortina e estimulada pelo botao **"Obstruir porta"** do widget.
 
+### Ancoragem: por que a contagem e o widget precisam concordar
+
+O requisito 8 nao cobra so o numero interno. Ele diz: parar dentro de +-10 mm
+**verificado pela contagem do encoder — e o widget deve mostrar a cabine
+nivelada**. Os dois precisam concordar, porque e o widget que a banca olha.
+
+A contagem do encoder e **relativa**: mede deslocamento desde onde foi zerada, e
+deriva por bordas perdidas no ruido. As bandeirolas, ao contrario, estao pregadas
+no poco em posicoes **absolutas** — 0, 3000 e 6000 mm. Por isso, a cada travessia
+completa, a contagem e corrigida pelo centro medido:
+
+```
+  bandeirola: largura 241.0 mm | centro 2990.5 mm | erro -9.5 mm
+  ancorado no andar 1: contagem corrigida em +9.5 mm
+```
+
+> Isto **nao** e o Sensor de Andar comandando a parada, o que o enunciado proibe
+> nesta entrega. Quem fecha a malha continua sendo o encoder. O sensor corrige a
+> REFERENCIA do encoder — que e exatamente o uso descrito no enunciado:
+> "conferir o seu contador contra uma referencia absoluta".
+
+Correcao maior que 100 mm e recusada automaticamente: nessa ordem de grandeza e
+mais provavel ser medicao ruim do que deriva, e a decisao fica para o operador,
+pelo comando `ancora`. Para desligar de vez: `ancoragem off`.
+
+> **Caso real da rasp42.** Depois de uma sessao longa a contagem ficou 9,5 mm
+> atrasada. A medicao da bandeirola do andar 1 detectou sozinha (`centro 2990,5`,
+> `erro -9,5`), e o dashboard confirmou por um caminho independente: marcava
+> 6012 onde a contagem dizia 6003.
+
 ### Quando a contagem e o widget discordam
 
 A contagem do encoder e **relativa**: ela mede deslocamento desde onde foi

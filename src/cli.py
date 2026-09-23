@@ -16,6 +16,7 @@ Comandos da Cabine 1:
   zera [mm]                redefine a contagem do encoder (padrao: 0)
   medicoes                 lista as bandeirolas ja medidas
   ancora                   corrige a contagem pela ultima bandeirola medida
+  ancoragem [on|off]       liga/desliga a correcao automatica a cada travessia
   obstruir | liberar       (so no modo simulado) aciona a cortina de luz
   ajuda                    mostra esta lista
   sair                     encerra o programa em seguranca
@@ -103,6 +104,13 @@ def executa(cabine, linha, simulador=None):
                   % (medicao.andar, medicao.centro_mm,
                      posicao.mm_do_andar(medicao.andar), correcao), flush=True)
             print("posicao agora: %.0f mm" % cabine.posicao_mm, flush=True)
+
+        elif comando == "ancoragem":
+            if argumentos:
+                cabine.ancoragem_automatica = argumentos[0].lower() in ("on", "1", "sim")
+            print("ancoragem automatica: %s"
+                  % ("ligada" if cabine.ancoragem_automatica else "desligada"),
+                  flush=True)
 
         elif comando == "medicoes":
             if not cabine.sensor_andar.medicoes:
