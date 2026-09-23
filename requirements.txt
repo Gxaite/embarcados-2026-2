@@ -1,0 +1,7 @@
+# Dependencia da placa. Na Raspberry Pi:  pip install -r requirements.txt
+# Na maquina de desenvolvimento ela nao instala (e nao e necessaria): o backend
+# simulado (--simulado) nao usa RPi.GPIO.
+RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
+
+# Apenas para rodar os testes automatizados (pytest tests/)
+pytest>=7.0
