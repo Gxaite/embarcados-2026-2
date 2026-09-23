@@ -19,7 +19,18 @@ from ..gpio.entradas import EntradaInterrupcao
 from . import posicao
 
 DEBOUNCE_MS = 2.0
-LARGURA_MINIMA_MM = 20.0        # abaixo disso, travessia incompleta
+
+# Largura minima para aceitar uma travessia como completa.
+#
+# O valor vem da bancada, nao de chute: as bandeirolas reais medidas na rasp42
+# tem cerca de 190 mm (andar 0), 241 mm (andar 1) e 142 mm (andar 2). Uma
+# "travessia" bem menor que a menor delas nao e bandeirola - e a cabine que
+# entrou e saiu pelo mesmo lado, ou uma borda espuria por ruido eletrico.
+#
+# Com o limite antigo de 20 mm, a bancada produziu uma medicao de 34 mm com
+# centro em 2898 mm, ou seja 102 mm fora do nominal do andar 1. Aceitar isso
+# contamina a medicao do centro, que e justamente o que o requisito 7 cobra.
+LARGURA_MINIMA_MM = 60.0
 
 
 class Medicao:

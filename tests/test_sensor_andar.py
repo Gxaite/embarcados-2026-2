@@ -67,3 +67,26 @@ def test_saida_sem_entrada_nao_gera_medicao(backend):
     backend.provoca(pinos.SENSOR_ANDAR, 0)
     time.sleep(0.03)
     assert sensor.medicoes == []
+
+
+def test_travessia_curta_demais_da_bancada_e_descartada(backend):
+    """Caso real da rasp42: 34 mm de largura, 102 mm fora do nominal.
+
+    As bandeirolas reais tem 142 a 242 mm. Uma travessia de 34 mm e a cabine
+    entrando e saindo pelo mesmo lado, ou ruido - nunca uma bandeirola.
+    """
+    encoder = EncoderFalso()
+    sensor = SensorAndar(backend, encoder)
+    atravessa(backend, encoder, 2881, 2915)
+    assert sensor.medicoes == []
+
+
+def test_bandeirolas_reais_da_bancada_sao_aceitas(backend):
+    """Larguras medidas na rasp42 em 23/09/2026."""
+    encoder = EncoderFalso()
+    sensor = SensorAndar(backend, encoder)
+    atravessa(backend, encoder, 2879, 3121)     # andar 1: 242 mm
+    atravessa(backend, encoder, 5929, 6071)     # andar 2: 142 mm
+    assert [m.largura_mm for m in sensor.medicoes] == [242, 142]
+    assert [m.andar for m in sensor.medicoes] == [1, 2]
+    assert all(m.erro_mm == 0 for m in sensor.medicoes)
