@@ -205,3 +205,36 @@ def test_renivelamento_quando_a_inercia_passa_do_ponto(monkeypatch):
                     andar, c.posicao_mm, posicao.TOLERANCIA_MM)
     finally:
         c.finaliza()
+
+
+def test_ancoragem_automatica_corrige_ao_atravessar(cabine):
+    """A contagem derivada volta ao lugar sozinha na travessia seguinte.
+
+    O requisito 8 nao cobra so o numero interno: ele cobra que o WIDGET mostre
+    a cabine nivelada. Contagem e widget so concordam se a referencia for
+    corrigida contra as bandeirolas, que estao pregadas no poco.
+    """
+    assert cabine.ancoragem_automatica
+
+    # Parte do andar 0 e vai ao 2: so assim a bandeirola do andar 1 e
+    # ATRAVESSADA por inteiro. Sair de dentro dela produz uma borda so, e sem
+    # as duas nao ha centro para medir nem referencia para ancorar.
+    cabine.zera(cabine.posicao_mm - 40)      # a contagem passa a mentir 40 mm
+
+    cabine.vai_para_andar(2)
+    espera_chegar(cabine)
+    assert posicao.nivelado(cabine.posicao_mm, 2), \
+        "parou em %.0f mm: a ancoragem deveria ter corrigido a deriva" \
+        % cabine.posicao_mm
+
+
+def test_ancoragem_pode_ser_desligada(cabine):
+    cabine.ancoragem_automatica = False
+    cabine.vai_para_andar(2)
+    espera_chegar(cabine)
+    antes = cabine.posicao_mm
+    cabine.zera(antes - 40)
+    cabine.vai_para_andar(0)
+    espera_chegar(cabine)
+    # Sem ancoragem a deriva permanece: a cabine para 40 mm fora do lugar real.
+    assert cabine.sensor_andar.medicoes[-1].erro_mm == pytest.approx(-40, abs=8)

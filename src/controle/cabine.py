@@ -72,6 +72,22 @@ CICLOS_DE_PULSO_MAXIMO = 10
 MOVIMENTO_DE_ASSENTAMENTO_MM = 1.0
 MAXIMO_DE_RENIVELAMENTOS = 12
 
+# Reancoragem automatica a cada travessia completa de bandeirola.
+#
+# A contagem do encoder e relativa e deriva: bordas se perdem por ruido, e o
+# "Resetar bancada" do widget muda o zero do simulador sem avisar a Raspberry.
+# As bandeirolas, ao contrario, estao pregadas no poco em posicoes absolutas.
+#
+# Isto nao e o Sensor de Andar comandando a parada - quem fecha a malha continua
+# sendo o encoder, como o enunciado exige. O sensor corrige a REFERENCIA do
+# encoder, que e o uso que o proprio enunciado descreve: "conferir o seu contador
+# contra uma referencia absoluta". Sem isso a contagem e o widget divergem, e o
+# requisito 8 cobra que o widget mostre a cabine nivelada.
+#
+# Correcao grande demais e sinal de medicao ruim, nao de deriva: nesse caso o
+# ajuste e recusado e fica para o comando `ancora`, decidido por quem opera.
+CORRECAO_AUTOMATICA_MAXIMA_MM = 100.0
+
 
 class Cabine:
     def __init__(self, backend, posicao_inicial_mm=0.0):
@@ -81,7 +97,9 @@ class Cabine:
 
         self.motor = Motor(backend)
         self.cortina = Cortina(backend)
-        self.sensor_andar = SensorAndar(backend, self.encoder)
+        self.ancoragem_automatica = True
+        self.sensor_andar = SensorAndar(backend, self.encoder,
+                                        ao_medir=self._ao_medir_bandeirola)
 
         # O mesmo sinal lido pelos DOIS caminhos, e cada um serve a uma coisa:
         # a interrupcao acima enxerga as bordas (para medir a bandeirola), e o
@@ -155,6 +173,27 @@ class Cabine:
 
     def zera(self, mm=0.0):
         self.encoder.zera(posicao.contagem_de_mm(mm))
+
+    def _ao_medir_bandeirola(self, medicao):
+        """Corrige a contagem assim que uma bandeirola e medida por inteiro."""
+        if not self.ancoragem_automatica or medicao.andar is None:
+            return
+        correcao = posicao.mm_do_andar(medicao.andar) - medicao.centro_mm
+        if abs(correcao) < 1.0:
+            return
+        if abs(correcao) > CORRECAO_AUTOMATICA_MAXIMA_MM:
+            print("  ancoragem recusada: correcao de %+.1f mm e grande demais "
+                  "para ser deriva. Use 'ancora' se for mesmo o caso."
+                  % correcao, flush=True)
+            return
+        self.encoder.zera(posicao.contagem_de_mm(self.posicao_mm + correcao))
+        if self._destino_mm is not None:
+            # A viagem continua: o destino e absoluto, e agora a posicao esta
+            # medida contra a mesma referencia que ele.
+            self._posicao_de_referencia = None
+            self._parado_desde = None
+        print("  ancorado no andar %d: contagem corrigida em %+.1f mm"
+              % (medicao.andar, correcao), flush=True)
 
     def ancora(self):
         """Corrige a contagem usando a ultima bandeirola medida.
