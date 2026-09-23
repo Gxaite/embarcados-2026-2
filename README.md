@@ -379,6 +379,31 @@ freando antes e a inercia precisa ser absorvida.
 > a inercia levou 15 mm alem do ponto de corte. A margem manual passou para
 > **25 mm**.
 
+### Renivelamento
+
+O motor nao arranca abaixo de ~10% de duty, entao existe uma velocidade minima
+e, com ela, uma **distancia minima de frenagem**. Quando essa distancia supera a
+tolerancia de +-10 mm, nao existe ganho que acerte em uma tacada so.
+
+> Medido na rasp42: o `andar 2` freou no ponto certo e a inercia levou ate
+> **6016 mm** — 16 mm alem do nominal, fora da tolerancia.
+
+A solucao e a dos elevadores de verdade: parar, deixar **assentar**, medir de
+novo e corrigir com **pulsos curtos** de duty minimo. Cada pulso dura poucos
+ciclos da malha e e seguido de nova medicao, o que faz a correcao convergir
+como uma bisseccao em vez de oscilar. A duracao do pulso e proporcional ao que
+falta — pulso fixo ou nao sai de erro grande, ou passa do ponto no pequeno.
+
+A chegada passa a informar quantos renivelamentos foram necessarios:
+
+```
+CHEGADA: 3008 mm (destino 3000 mm, erro +8 mm, andar 1, 2 renivelamento(s))
+```
+
+> Os pulsos nao passam pela rampa do motor. Pela rampa o duty subiria poucos
+> pontos por ciclo e nunca venceria o atrito estatico: a cabine ficaria zumbindo
+> sem sair do lugar.
+
 ### Protecao contra travamento
 
 Se o destino for inalcancavel — tipicamente porque a contagem derivou e aponta
@@ -446,6 +471,7 @@ Medido com a **pinagem nova**, que e a que a bancada usa (ver Secao 3).
 | Erro de parada — `andar 1` | **-2 mm** | tolerancia e +-10 mm |
 | `transicoes_invalidas` | **1** na sessao inteira | a 40% de duty |
 | Fim de curso | parou em 6010 mm | manual; a margem foi de 5 para 25 mm |
+| Inercia de frenagem | ~16 mm | `andar 2` parou em 6016 mm; originou o renivelamento |
 | Encoder vs. widget | **6010 mm contra 6011 mm** | 1 mm de erro em 6 m de curso |
 | Cortina | obstruida e liberada com 3 s | botao "Obstruir porta (3 s)" |
 

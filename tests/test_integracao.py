@@ -176,3 +176,32 @@ def test_manual_para_antes_do_limite(cabine):
     time.sleep(0.5)
     assert cabine.posicao_mm <= posicao.TOPO_MM, \
         "passou do topo: %.0f mm" % cabine.posicao_mm
+
+
+def test_renivelamento_quando_a_inercia_passa_do_ponto(monkeypatch):
+    """Frenagem mais longa que a tolerancia: uma tacada so nao acerta.
+
+    E o caso da bancada real, onde o `andar 2` parou em 6016 mm. Com o motor
+    incapaz de andar abaixo de 10% de duty, existe uma distancia minima de
+    frenagem; quando ela supera os +-10 mm, so corrigindo depois de assentar.
+    """
+    from src.gpio import sim_backend
+    monkeypatch.setattr(sim_backend, "CONSTANTE_DE_INERCIA_S", 0.7)
+    monkeypatch.setattr(sim_backend, "VELOCIDADE_MAXIMA_MM_S", 700.0)
+
+    backend = sim_backend.BackendSimulado()
+    c = Cabine(backend)
+    try:
+        # Andares 1 e 0, nao o 2: a 700 mm/s o simulador gera 700 interrupcoes
+        # por segundo e o Python perde bordas, entao a contagem fica atras da
+        # posicao real e o andar 2 (que fica no proprio topo do poco) vira
+        # inalcancavel. Isso e perda de borda, nao falha de renivelamento - e a
+        # bancada real registrou ZERO transicoes invalidas a 40% de duty.
+        for andar in (1, 0):
+            c.vai_para_andar(andar)
+            espera_chegar(c, limite_s=90)
+            assert posicao.nivelado(c.posicao_mm, andar), \
+                "andar %d: parou em %.0f mm, fora dos +-%d mm" % (
+                    andar, c.posicao_mm, posicao.TOLERANCIA_MM)
+    finally:
+        c.finaliza()

@@ -60,6 +60,18 @@ class Motor:
         self._pwm.ajusta(atual + delta)
         return self._pwm.duty
 
+    def define_duty_imediato(self, duty):
+        """Aplica o duty sem passar pela rampa.
+
+        Usado nos pulsos de renivelamento, que duram um unico ciclo da malha:
+        pela rampa o duty subiria uns poucos pontos por ciclo e nunca venceria
+        o atrito estatico, e a cabine ficaria zumbindo sem sair do lugar.
+        """
+        duty = max(0.0, min(100.0, float(duty)))
+        self._alvo_de_duty = duty
+        self._pwm.ajusta(duty)
+        return duty
+
     def aciona_direto(self, direcao, duty):
         """Acionamento manual do requisito 1: sem rampa, valor imediato."""
         self.define_direcao(direcao)

@@ -31,6 +31,7 @@ def imprime_estado(estado):
   direcao ............... %s
   duty cycle ............ %.1f %%
   cortina ............... %s
+  eventos da cortina .... %d (de %d bordas cruas; o resto era repique)
   sensor de andar ....... %s
   destino ............... %s
   transicoes invalidas .. %d""" % (
@@ -41,6 +42,8 @@ def imprime_estado(estado):
         estado["direcao"],
         estado["duty"],
         "OBSTRUIDA" if estado["cortina_obstruida"] else "livre",
+        estado["cortina_eventos"],
+        estado["cortina_bordas_cruas"],
         "dentro da bandeirola" if estado["sensor_andar"] else "entre andares",
         "n/d" if estado["destino_mm"] is None else "%.0f mm" % estado["destino_mm"],
         estado["transicoes_invalidas"]), flush=True)
