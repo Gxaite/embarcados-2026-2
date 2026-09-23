@@ -15,6 +15,7 @@ Comandos da Cabine 1:
   estado                   imprime o estado completo da cabine
   zera [mm]                redefine a contagem do encoder (padrao: 0)
   medicoes                 lista as bandeirolas ja medidas
+  ancora                   corrige a contagem pela ultima bandeirola medida
   obstruir | liberar       (so no modo simulado) aciona a cortina de luz
   ajuda                    mostra esta lista
   sair                     encerra o programa em seguranca
@@ -91,6 +92,14 @@ def executa(cabine, linha, simulador=None):
             mm = float(argumentos[0]) if argumentos else 0.0
             cabine.zera(mm)
             print("contagem redefinida para %.0f mm" % mm, flush=True)
+
+        elif comando == "ancora":
+            medicao, correcao = cabine.ancora()
+            print("contagem reancorada pelo andar %d: centro medido em %.1f mm, "
+                  "nominal %d mm, correcao de %+.1f mm"
+                  % (medicao.andar, medicao.centro_mm,
+                     posicao.mm_do_andar(medicao.andar), correcao), flush=True)
+            print("posicao agora: %.0f mm" % cabine.posicao_mm, flush=True)
 
         elif comando == "medicoes":
             if not cabine.sensor_andar.medicoes:
