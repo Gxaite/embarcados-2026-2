@@ -19,6 +19,7 @@ from ..gpio.encoder import EncoderQuadratura
 from ..gpio.entradas import EntradaPolling
 from . import posicao
 from .cortina import Cortina
+from . import motor as motor_mod
 from .motor import Motor
 from .sensor_andar import SensorAndar
 
@@ -42,12 +43,34 @@ MARGEM_DE_FIM_DE_CURSO_MM = 25.0
 # encoder para de contar, e sem isto a malha comandaria motor indefinidamente
 # contra o fim de curso mecanico. Numa bancada compartilhada isso e o tipo de
 # coisa que estraga o equipamento de outra pessoa.
-TEMPO_DE_TRAVAMENTO_S = 3.0
+TEMPO_DE_TRAVAMENTO_S = 6.0
 MOVIMENTO_MINIMO_MM = 3.0
 
 # A tolerancia exigida e +-10 mm; a malha mira mais perto de proposito, para
 # que a folga absorva a inercia da frenagem em vez de ser gasta antes dela.
 PARADA_FINA_MM = 3.0
+
+# Renivelamento.
+#
+# O motor nao arranca abaixo de ~10% de duty, entao existe uma velocidade
+# minima e, com ela, uma distancia minima de frenagem. Medido na rasp42: o
+# `andar 2` freou no ponto certo e a inercia levou ate 6016 mm - 16 mm alem do
+# nominal, fora dos +-10 mm exigidos.
+#
+# Quando a distancia de frenagem e maior que a tolerancia, NAO existe ganho que
+# acerte em uma tacada so. A saida e a mesma dos elevadores de verdade: parar,
+# deixar assentar, medir de novo e corrigir com pulsos curtos. Cada pulso dura
+# um ciclo da malha, o que limita o quanto a cabine anda antes da proxima
+# medicao e faz a correcao convergir em vez de oscilar.
+TEMPO_DE_ASSENTAMENTO_S = 0.4
+# Duracao do pulso, em ciclos da malha, por milimetro que falta. Um pulso fixo
+# nao serve: curto demais nao sai de erros grandes, longo demais passa do ponto
+# nos pequenos. Como cada pulso e seguido de nova medicao, errar a duracao so
+# custa mais uma iteracao - o processo converge como uma bisseccao.
+CICLOS_DE_PULSO_POR_MM = 0.25
+CICLOS_DE_PULSO_MAXIMO = 10
+MOVIMENTO_DE_ASSENTAMENTO_MM = 1.0
+MAXIMO_DE_RENIVELAMENTOS = 12
 
 
 class Cabine:
@@ -69,6 +92,11 @@ class Cabine:
         self._destino_mm = None
         self._parado_desde = None
         self._posicao_de_referencia = None
+        self._assentando = False
+        self._assentou_em = None
+        self._assentou_desde = None
+        self._renivelamentos = 0
+        self._ciclos_de_pulso = None
         self._encerrar = threading.Event()
         self._acordar = threading.Event()
         self._malha = threading.Thread(target=self._laco, daemon=True)
@@ -94,6 +122,8 @@ class Cabine:
             "direcao": self.motor.direcao,
             "duty": self.motor.duty,
             "cortina_obstruida": self.cortina.obstruida,
+            "cortina_eventos": self.cortina.obstrucoes + self.cortina.liberacoes,
+            "cortina_bordas_cruas": self.cortina.bordas_cruas,
             "sensor_andar": self.sensor_andar_polling.le(),
             "destino_mm": self._destino_mm,
             "transicoes_invalidas": self.encoder.transicoes_invalidas,
@@ -110,6 +140,9 @@ class Cabine:
         self._destino_mm = float(mm)
         self._parado_desde = None
         self._posicao_de_referencia = None
+        self._assentando = False
+        self._renivelamentos = 0
+        self._ciclos_de_pulso = None
         self._acordar.set()
 
     def aciona_direto(self, direcao, duty):
@@ -168,9 +201,20 @@ class Cabine:
         self.motor.passo(dt)
 
     def _supervisiona_travamento(self):
-        """Aborta se o motor esta comandado e a cabine nao anda."""
-        if self.motor.duty <= 0.0:
+        """Aborta se o motor esta comandado e a cabine nao anda.
+
+        Nao vale durante assentamento e renivelamento: ali a cabine fica parada
+        ou anda pouquissimo DE PROPOSITO, e o pulso zera o duty a cada ciclo.
+        """
+        if self._assentando or self._renivelamentos:
             self._parado_desde = None
+            self._posicao_de_referencia = None
+            return
+        if self.motor.duty <= 0.0:
+            # Os dois andam juntos: manter a referencia sem o instante faria a
+            # conta do tempo cair sobre um None no ciclo seguinte.
+            self._parado_desde = None
+            self._posicao_de_referencia = None
             return
         agora = time.monotonic()
         mm = self.posicao_mm
@@ -213,24 +257,87 @@ class Cabine:
 
     def _passo_de_controle(self):
         mm = self.posicao_mm
+
+        if self._assentando:
+            self._passo_de_assentamento(mm)
+            return
+
         erro = self._destino_mm - mm
 
         if abs(erro) <= PARADA_FINA_MM:
-            destino = self._destino_mm
-            self._destino_mm = None
+            # Freia e para de decidir: a inercia ainda vai levar a cabine mais
+            # um tanto, e so depois que ela assentar e que da para saber se o
+            # nivelamento ficou dentro da tolerancia.
             self.motor.para()
-            andar = posicao.andar_estimado(mm)
-            print("CHEGADA: %.0f mm (destino %.0f mm, erro %+.0f mm, andar %s)"
-                  % (mm, destino, mm - destino,
-                     "n/d" if andar is None else andar), flush=True)
+            self._assentando = True
+            self._assentou_em = mm
+            self._assentou_desde = time.monotonic()
             return
 
         self.motor.define_direcao(pinos.SUBIR if erro > 0 else pinos.DESCER)
+
+        if self._renivelamentos:
+            # Renivelando por pulsos: um ciclo de motor no duty minimo, freio, e
+            # volta a assentar para medir de novo. Manter o motor ligado traria
+            # de volta o problema que estamos corrigindo - a inercia passaria do
+            # ponto outra vez. O pulso limita o quanto a cabine anda entre duas
+            # medicoes, e por isso a correcao converge em vez de oscilar.
+            if self._ciclos_de_pulso is None:
+                self._ciclos_de_pulso = max(1, min(
+                    CICLOS_DE_PULSO_MAXIMO,
+                    int(abs(erro) * CICLOS_DE_PULSO_POR_MM)))
+            if self._ciclos_de_pulso > 0:
+                self.motor.define_duty_imediato(
+                    motor_mod.DUTY_MINIMO_DE_MOVIMENTO)
+                self._ciclos_de_pulso -= 1
+                return
+            self.motor.para()
+            self._ciclos_de_pulso = None
+            self._assentando = True
+            self._assentou_em = mm
+            self._assentou_desde = time.monotonic()
+            return
 
         teto = DUTY_MAXIMO
         if abs(erro) < DISTANCIA_DE_APROXIMACAO_MM:
             teto = DUTY_DE_APROXIMACAO
         self.motor.define_alvo_de_duty(min(teto, GANHO_P * abs(erro)))
+
+    def _passo_de_assentamento(self, mm):
+        """Espera a cabine parar de verdade, mede, e renivela se precisar."""
+        agora = time.monotonic()
+        if abs(mm - self._assentou_em) >= MOVIMENTO_DE_ASSENTAMENTO_MM:
+            self._assentou_em = mm
+            self._assentou_desde = agora
+            return
+        if agora - self._assentou_desde < TEMPO_DE_ASSENTAMENTO_S:
+            return
+
+        destino = self._destino_mm
+        erro = destino - mm
+        dentro = abs(erro) <= posicao.TOLERANCIA_MM
+
+        if dentro or self._renivelamentos >= MAXIMO_DE_RENIVELAMENTOS:
+            self._destino_mm = None
+            self._assentando = False
+            self._ciclos_de_pulso = None
+            andar = posicao.andar_estimado(mm)
+            aviso = "" if dentro else "  *** FORA DA TOLERANCIA DE +-%d mm ***" \
+                % posicao.TOLERANCIA_MM
+            print("CHEGADA: %.0f mm (destino %.0f mm, erro %+.0f mm, andar %s, "
+                  "%d renivelamento(s))%s"
+                  % (mm, destino, mm - destino,
+                     "n/d" if andar is None else andar,
+                     self._renivelamentos, aviso), flush=True)
+            self._renivelamentos = 0
+            return
+
+        self._renivelamentos += 1
+        self._assentando = False
+        self._ciclos_de_pulso = None
+        print("RENIVELANDO (%d/%d): parou em %.0f mm, faltam %+.0f mm"
+              % (self._renivelamentos, MAXIMO_DE_RENIVELAMENTOS, mm, erro),
+              flush=True)
 
     # ------------------------------------------------------------ encerramento
     def finaliza(self):
