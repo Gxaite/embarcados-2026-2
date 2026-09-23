@@ -210,7 +210,144 @@ Abas: `default`, `pr_dio_completo` (GPIO), `uart` (Entrega 2) e
 
 ---
 
-## 6. Sincronizando com a placa
+## 6. Arquitetura e execucao
+
+O codigo esta nos dois niveis exigidos pelo requisito 2. O pacote
+`src/controle/` **nunca importa `RPi.GPIO`**: ele so conversa com as classes de
+`src/gpio/`, que por sua vez falam com um *backend* intercambiavel.
+
+```
+src/
+├── gpio/                  BAIXO NIVEL - pino, nivel logico, duty, borda
+│   ├── pinos.py           mapa BCM da Cabine 1 e tabela de direcao
+│   ├── backend.py         interface abstrata de acesso a GPIO
+│   ├── rpi_backend.py     implementacao real, via RPi.GPIO
+│   ├── sim_backend.py     modelo do poco em software
+│   ├── saidas.py          saida on/off e saida PWM a 1 kHz
+│   ├── entradas.py        entrada por POLLING e entrada por INTERRUPCAO
+│   └── encoder.py         quadratura 4x por interrupcao nos dois canais
+├── controle/              ALTO NIVEL - andar, milimetro, nivelamento
+│   ├── posicao.py         conversoes, tolerancia de +-10 mm, limites do poco
+│   ├── motor.py           tabela de direcao e rampa de duty
+│   ├── cortina.py         eventos de obstrucao e liberacao
+│   ├── sensor_andar.py    medicao da bandeirola pelas duas bordas
+│   └── cabine.py          malha de posicao a 50 ms
+├── cli.py                 interface de terminal
+└── main.py                ponto de entrada e tratamento de sinais
+
+ferramentas/bringup.py     ativacao da placa por etapas
+```
+
+O ganho dessa separacao e o backend simulado: a mesma logica de controle roda
+contra um modelo do poco em software, o que permite desenvolver e testar **sem
+gastar slot de bancada**.
+
+### Na Raspberry Pi
+
+```bash
+git pull
+python3 -m src.main
+```
+
+A RPi.GPIO ja vem no Python do sistema da placa do laboratorio — nao e preciso
+venv nem `pip install`.
+
+### Sem a placa
+
+```bash
+python3 -m src.main --simulado
+```
+
+### Comandos
+
+```
+andar <0|1|2>            viaja ate o andar (malha fechada no encoder)
+ir <mm>                  viaja ate uma posicao em mm
+motor <direcao> <duty>   acionamento direto; direcao = livre|subir|descer|freio
+parar                    zera o PWM e aplica o freio
+estado                   imprime o estado completo da cabine
+zera [mm]                redefine a contagem do encoder
+medicoes                 lista as bandeirolas ja medidas
+obstruir | liberar       (so no modo simulado) aciona a cortina de luz
+sair                     encerra o programa em seguranca
+```
+
+Na bancada, a cortina e estimulada pelo botao **"Obstruir porta"** do widget.
+
+### Roteiro de bancada
+
+Da etapa mais segura para a menos — entradas antes de saidas, saidas antes de
+movimento. As duas ultimas pedem confirmacao e movem o motor:
+
+```bash
+python3 -m ferramentas.bringup mapa       # confere a pinagem, nao toca na GPIO
+python3 -m ferramentas.bringup entradas   # so le CORTINA e SENSOR_ANDAR
+python3 -m ferramentas.bringup encoder    # conta bordas e transicoes invalidas
+python3 -m ferramentas.bringup direcao    # MOVE: percorre a tabela de direcao
+python3 -m ferramentas.bringup pwm        # MOVE: mede o duty de arranque
+python3 -m ferramentas.bringup limpa      # libera a GPIO ao encerrar o slot
+```
+
+Use `--simulado` para ensaiar o roteiro antes de entrar na placa.
+
+### Testes
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+Os testes de integracao rodam em tempo real e levam cerca de tres minutos.
+
+---
+
+## 7. Onde cada requisito esta atendido
+
+| # | Requisito | Onde |
+|:-:|:--|:--|
+| 1 | Python | Python 3 |
+| 2 | Dois niveis | `src/gpio/` e `src/controle/`; `controle/` nao importa `RPi.GPIO` |
+| 3 | `DIR1`/`DIR2` pela tabela | `gpio/pinos.py::DIRECOES`, `controle/motor.py` |
+| 4 | PWM 1 kHz, 0–100% | `gpio/saidas.py::SaidaPWM` |
+| 5 | Cortina com debounce e log imediato | `gpio/entradas.py::EntradaInterrupcao`, `controle/cortina.py` |
+| 6 | Encoder por interrupcao nos dois canais, 32 bits | `gpio/encoder.py` |
+| 7 | Sensor de Andar, duas bordas e centro pela media | `controle/sensor_andar.py` |
+| 8 | Parada em +-10 mm | `controle/cabine.py::_passo_de_controle` |
+| 9 | Sem busy-wait | malha em `Event.wait(0.050)`, debounce em `threading.Timer`, CLI em `input()` |
+| 10 | SIGINT tratado | `src/main.py::encerra` (e tambem SIGTERM e SIGHUP) |
+| 11 | `requirements.txt` e instrucoes | este arquivo |
+| 12 | Video ate 5 min | *(a gravar)* |
+| — | Entradas por **polling e por interrupcao** | `gpio/entradas.py`: `EntradaPolling` e `EntradaInterrupcao`, ambas em uso em `controle/cabine.py` |
+
+---
+
+## 8. Medicoes da bancada
+
+Preencher no laboratorio — estes numeros entram na entrega.
+
+| Grandeza | Valor medido | Observacao |
+|:--|:--|:--|
+| Largura da bandeirola do andar 0 | | pelas duas bordas |
+| Largura da bandeirola do andar 1 | | |
+| Largura da bandeirola do andar 2 | | |
+| Erro do centro vs. nominal — andar 0 | | |
+| Erro do centro vs. nominal — andar 1 | | |
+| Erro do centro vs. nominal — andar 2 | | |
+| Duty minimo de arranque medido | | enunciado sugere ~10% |
+| `GANHO_P` final | | `src/controle/cabine.py` |
+| `DUTY_MAXIMO` final | | |
+| `TAXA_RAMPA_POR_S` final | | `src/controle/motor.py` |
+| `DEBOUNCE_MS` da cortina | | `src/controle/cortina.py` |
+| `transicoes_invalidas` apos 10 viagens | | **deve ser 0** |
+
+> `transicoes_invalidas` e o numero mais importante da bancada. Ele conta saltos
+> impossiveis na quadratura, que so acontecem quando uma borda de interrupcao se
+> perde. Se ele cresce durante uma viagem, a posicao esta derivando e o
+> nivelamento vai falhar de forma intermitente — exatamente o tipo de defeito
+> que nao aparece no simulador.
+
+---
+
+## 9. Sincronizando com a placa
 
 ```bash
 git clone https://github.com/Gxaite/embarcados-2026-2.git   # primeira vez
