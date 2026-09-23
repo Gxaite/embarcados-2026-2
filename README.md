@@ -5,7 +5,7 @@ Este arquivo é o **contexto do projeto**: o que precisa existir, o que vale not
 e o que a bancada impõe. Consulte antes de decidir qualquer coisa.
 
 - **Integrantes:** Gabriel Reis Scheidt Paulino, Samuel Afonso
-- **Turma:** Prof. Renato
+- **Turma:** ver `CLAUDE.md` / a definir no README final
 - **Enunciado oficial:** `gitlab.com/fse_fga/trabalhos-2026_2/trabalho-1-2026-2`
 
 ---
@@ -37,9 +37,14 @@ dashboard web em tempo real. Os três barramentos do trabalho:
 
 | Entrega | Escopo | Data |
 |:--|:--|:--|
-| **Entrega 1** | Módulo da GPIO — controle de **uma** cabine, 3 andares | **20/09/2026** |
-| **Entrega 2** | Módulos UART/MODBUS e I2C | **04/10/2026** |
-| **Entrega Final** | PID, calibração, cota de potência, despacho, TCP/IP | **12/10/2026** |
+| **Entrega 1** | Módulo da GPIO — controle de **uma** cabine, 3 andares | **30/09/2026** |
+| **Entrega 2** | Módulos UART/MODBUS e I2C | *a definir* |
+| **Entrega Final** | PID, calibração, cota de potência, despacho, TCP/IP | *a definir* |
+
+> As datas são as da **nossa turma**, que usa o mesmo enunciado mas calendário
+> próprio. O enunciado publicado no GitLab traz as datas da turma do Prof. Renato
+> (20/09, 04/10 e 12/10) — **não são as nossas**. Entregas 2 e Final ainda não
+> foram anunciadas.
 
 Entregáveis de toda entrega: **repositório com README e instruções de execução**
 (`requirements.txt` em Python, `Makefile` em C/C++) e **vídeo** — até 5 min na
