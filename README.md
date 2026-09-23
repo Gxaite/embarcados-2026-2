@@ -385,32 +385,41 @@ Os testes de integracao rodam em tempo real e levam cerca de tres minutos.
 
 ---
 
-## 8. Medicoes da bancada
+## 8. Medicoes da bancada — rasp42, 23/09/2026
 
-Preencher no laboratorio — estes numeros entram na entrega.
+Medido com a **pinagem nova**, que e a que a bancada usa (ver Secao 3).
 
 | Grandeza | Valor medido | Observacao |
 |:--|:--|:--|
-| Largura da bandeirola do andar 0 | | pelas duas bordas |
-| Largura da bandeirola do andar 1 | | |
-| Largura da bandeirola do andar 2 | | |
-| Erro do centro vs. nominal — andar 0 | | |
-| Erro do centro vs. nominal — andar 1 | | |
-| Erro do centro vs. nominal — andar 2 | | |
-| Duty minimo de arranque medido | | enunciado sugere ~10% |
-| `GANHO_P` final | | `src/controle/cabine.py` |
-| `DUTY_MAXIMO` final | | |
-| `TAXA_RAMPA_POR_S` final | | `src/controle/motor.py` |
-| `DEBOUNCE_MS` da cortina | | `src/controle/cortina.py` |
-| `transicoes_invalidas` apos 10 viagens | | **deve ser 0** |
+| Bandeirola do andar 0 | ~190 mm | saida da borda em 95 mm, partindo do centro |
+| Bandeirola do andar 1 | **242 mm** e **241 mm** | duas travessias independentes |
+| Bandeirola do andar 2 | ~142 mm | entrada em 5929 mm |
+| Centro medido — andar 1 | **3000,0 mm** e **3002,5 mm** | erro **+0,0 mm** e **+2,5 mm** |
+| Erro de parada — `andar 1` | **-2 mm** | tolerancia e +-10 mm |
+| `transicoes_invalidas` | **1** na sessao inteira | a 40% de duty |
+| Fim de curso | cortou em 6000 mm | em acionamento manual |
+| Cortina | obstruida e liberada com 3 s | botao "Obstruir porta (3 s)" |
 
-> `transicoes_invalidas` e o numero mais importante da bancada. Ele conta saltos
-> impossiveis na quadratura, que so acontecem quando uma borda de interrupcao se
-> perde. Se ele cresce durante uma viagem, a posicao esta derivando e o
-> nivelamento vai falhar de forma intermitente — exatamente o tipo de defeito
-> que nao aparece no simulador.
+As tres bandeirolas tem **larguras diferentes** — 190, 242 e 142 mm — o que
+confirma na pratica por que o centro precisa da media das duas bordas: sao
+larguras de ate 242 mm contra uma tolerancia de +-10 mm, e nao ha como deduzir
+o centro a partir de uma borda so.
 
----
+### Ainda a medir
+
+| Grandeza | Onde ajustar |
+|:--|:--|
+| Duty minimo de arranque | `ferramentas/bringup.py pwm` |
+| `transicoes_invalidas` em duty maximo | se crescer, reduzir `DUTY_MAXIMO` |
+| `GANHO_P`, `DUTY_MAXIMO` | `src/controle/cabine.py` |
+| `TAXA_RAMPA_POR_S` | `src/controle/motor.py` |
+
+> **Sobre `transicoes_invalidas`.** No simulador ele fica em zero; na bancada
+> nao vai ficar, porque ha ruido eletrico real. Um outro grupo relatou de 2% a
+> 27% de bordas invalidas. Na nossa sessao deu **1 ocorrencia** a 40% de duty.
+> O decodificador **descarta** a transicao impossivel em vez de chutar contagem,
+> entao o erro vira posicao perdida, nao posicao errada — mas ele acumula, e e
+> por isso que o Sensor de Andar existe como referencia absoluta.
 
 ## 9. Sincronizando com a placa
 
