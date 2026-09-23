@@ -368,6 +368,17 @@ chega na Entrega 2, por MODBUS. As saidas sao duas:
 > a cada passagem por bandeirola — e um item da tabela de avaliacao. O que esta
 > aqui e o nucleo daquele procedimento.
 
+### Fim de curso: manual e malha fechada sao casos diferentes
+
+O andar 2 fica em **6000 mm, que e o proprio limite do poco**. Uma margem de
+seguranca aplicada em malha fechada cortaria a viagem antes da chegada, entao
+ela vale **so no acionamento manual**, onde nao ha rampa de aproximacao
+freando antes e a inercia precisa ser absorvida.
+
+> Medido na rasp42: com margem de 5 mm, o `motor subir` parou em **6010 mm** —
+> a inercia levou 15 mm alem do ponto de corte. A margem manual passou para
+> **25 mm**.
+
 ### Protecao contra travamento
 
 Se o destino for inalcancavel — tipicamente porque a contagem derivou e aponta
@@ -434,7 +445,8 @@ Medido com a **pinagem nova**, que e a que a bancada usa (ver Secao 3).
 | Centro medido — andar 1 | **3000,0 mm** e **3002,5 mm** | erro **+0,0 mm** e **+2,5 mm** |
 | Erro de parada — `andar 1` | **-2 mm** | tolerancia e +-10 mm |
 | `transicoes_invalidas` | **1** na sessao inteira | a 40% de duty |
-| Fim de curso | cortou em 6000 mm | em acionamento manual |
+| Fim de curso | parou em 6010 mm | manual; a margem foi de 5 para 25 mm |
+| Encoder vs. widget | **6010 mm contra 6011 mm** | 1 mm de erro em 6 m de curso |
 | Cortina | obstruida e liberada com 3 s | botao "Obstruir porta (3 s)" |
 
 As tres bandeirolas tem **larguras diferentes** — 190, 242 e 142 mm — o que

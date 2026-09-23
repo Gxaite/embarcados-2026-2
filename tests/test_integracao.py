@@ -148,3 +148,31 @@ def test_travamento_aborta_a_viagem(cabine):
     assert not cabine.em_viagem, "a malha deveria ter abortado por travamento"
     assert cabine.motor.duty == 0.0
     assert cabine.motor.direcao == pinos.FREIO
+
+
+def test_andar_extremo_nao_e_cortado_pelo_fim_de_curso(cabine):
+    """O andar 2 fica em 6000 mm, que e o proprio limite do poco.
+
+    A margem do fim de curso vale so no acionamento manual: aplicada em malha
+    fechada, ela abortaria a viagem antes da chegada.
+    """
+    cabine.vai_para_andar(2)
+    espera_chegar(cabine)
+    assert posicao.nivelado(cabine.posicao_mm, 2), \
+        "parou em %.0f mm" % cabine.posicao_mm
+
+    cabine.vai_para_andar(0)
+    espera_chegar(cabine)
+    assert posicao.nivelado(cabine.posicao_mm, 0), \
+        "parou em %.0f mm" % cabine.posicao_mm
+
+
+def test_manual_para_antes_do_limite(cabine):
+    """Acionamento manual nao tem rampa: a margem absorve a frenagem."""
+    cabine.aciona_direto(pinos.SUBIR, 60.0)
+    tempo_limite = time.monotonic() + 40
+    while cabine.motor.direcao != pinos.FREIO and time.monotonic() < tempo_limite:
+        time.sleep(0.05)
+    time.sleep(0.5)
+    assert cabine.posicao_mm <= posicao.TOPO_MM, \
+        "passou do topo: %.0f mm" % cabine.posicao_mm
