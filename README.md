@@ -333,11 +333,48 @@ parar                    zera o PWM e aplica o freio
 estado                   imprime o estado completo da cabine
 zera [mm]                redefine a contagem do encoder
 medicoes                 lista as bandeirolas ja medidas
+ancora                   corrige a contagem pela ultima bandeirola medida
 obstruir | liberar       (so no modo simulado) aciona a cortina de luz
 sair                     encerra o programa em seguranca
 ```
 
 Na bancada, a cortina e estimulada pelo botao **"Obstruir porta"** do widget.
+
+### Quando a contagem e o widget discordam
+
+A contagem do encoder e **relativa**: ela mede deslocamento desde onde foi
+zerada. O widget tem o proprio contador, e o botao **"Resetar bancada" zera o
+dele sem avisar a Raspberry**. Apertar esse botao com o programa rodando faz os
+dois passarem a falar de referencias diferentes — voce manda ir ao andar 1 e o
+widget mostra a cabine chegando no 0.
+
+Nao ha canal para a bancada avisar a Raspberry disso na Entrega 1; isso so
+chega na Entrega 2, por MODBUS. As saidas sao duas:
+
+1. **Nao apertar "Resetar bancada" com o programa rodando.** Se precisar,
+   reinicie o programa depois.
+2. **Reancorar pela bandeirola.** As bandeirolas estao em posicoes absolutas
+   conhecidas, entao uma travessia completa diz onde a cabine realmente esta:
+
+   ```
+   andar 2      # atravessa a bandeirola do andar 1 por inteiro
+   ancora       # corrige a contagem pelo centro medido
+   ```
+
+   O comando so funciona depois de uma travessia **completa** — parar dentro da
+   bandeirola nao produz borda de saida, e sem as duas bordas nao ha centro.
+
+> Na Entrega Final a reancoragem deixa de ser comando e passa a ser automatica
+> a cada passagem por bandeirola — e um item da tabela de avaliacao. O que esta
+> aqui e o nucleo daquele procedimento.
+
+### Protecao contra travamento
+
+Se o destino for inalcancavel — tipicamente porque a contagem derivou e aponta
+para fora do poco fisico — a cabine encosta no batente e o encoder para de
+contar. Sem tratamento, a malha comandaria motor indefinidamente contra o fim
+de curso mecanico. A malha aborta apos **3 segundos** de motor comandado sem a
+cabine sair do lugar, e sugere o `ancora`.
 
 ### Roteiro de bancada
 

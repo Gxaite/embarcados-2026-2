@@ -12,6 +12,7 @@ comando de acionamento direto NAO passa pela malha fechada, e sem isso ele
 levaria a cabine para fora dos 0..6000 mm. E o requisito 5 da Secao 3.
 """
 import threading
+import time
 
 from ..gpio import pinos
 from ..gpio.encoder import EncoderQuadratura
@@ -27,6 +28,16 @@ DUTY_MAXIMO = 60.0
 DUTY_DE_APROXIMACAO = 15.0     # teto nos ultimos milimetros
 DISTANCIA_DE_APROXIMACAO_MM = 300.0
 MARGEM_DE_FIM_DE_CURSO_MM = 5.0
+
+# Travamento: motor comandado, cabine sem sair do lugar.
+#
+# Acontece quando o destino e inalcancavel - tipicamente porque a contagem
+# derivou e aponta para fora do poco fisico. A cabine encosta no batente, o
+# encoder para de contar, e sem isto a malha comandaria motor indefinidamente
+# contra o fim de curso mecanico. Numa bancada compartilhada isso e o tipo de
+# coisa que estraga o equipamento de outra pessoa.
+TEMPO_DE_TRAVAMENTO_S = 3.0
+MOVIMENTO_MINIMO_MM = 3.0
 
 # A tolerancia exigida e +-10 mm; a malha mira mais perto de proposito, para
 # que a folga absorva a inercia da frenagem em vez de ser gasta antes dela.
@@ -50,6 +61,8 @@ class Cabine:
         self.sensor_andar_polling = EntradaPolling(backend, pinos.SENSOR_ANDAR)
 
         self._destino_mm = None
+        self._parado_desde = None
+        self._posicao_de_referencia = None
         self._encerrar = threading.Event()
         self._acordar = threading.Event()
         self._malha = threading.Thread(target=self._laco, daemon=True)
@@ -89,6 +102,8 @@ class Cabine:
             raise ValueError("destino fora do poco: %.1f mm (faixa: %d..%d)"
                              % (mm, posicao.FUNDO_MM, posicao.TOPO_MM))
         self._destino_mm = float(mm)
+        self._parado_desde = None
+        self._posicao_de_referencia = None
         self._acordar.set()
 
     def aciona_direto(self, direcao, duty):
@@ -102,6 +117,34 @@ class Cabine:
     def zera(self, mm=0.0):
         self.encoder.zera(posicao.contagem_de_mm(mm))
 
+    def ancora(self):
+        """Corrige a contagem usando a ultima bandeirola medida.
+
+        A contagem do encoder e RELATIVA: ela conta deslocamento desde onde foi
+        zerada, e nao sabe onde a cabine esta de fato. Ela deriva por duas
+        razoes - bordas perdidas por ruido, e o "Resetar bancada" do widget,
+        que muda o zero do simulador sem avisar a Raspberry.
+
+        As bandeirolas, ao contrario, estao em posicoes ABSOLUTAS conhecidas
+        (0, 3000 e 6000 mm). Uma travessia completa mede o centro de uma delas,
+        e a diferenca entre esse centro e o nominal do andar e exatamente o
+        quanto a contagem derivou.
+
+        Nesta entrega isso e uma correcao explicita, pedida pelo operador: o
+        enunciado diz que quem fecha a malha e o encoder, e o Sensor de Andar
+        serve para CONFERIR o contador contra uma referencia absoluta. Na
+        Entrega Final a reancoragem passa a ser automatica a cada passagem.
+        """
+        if not self.sensor_andar.medicoes:
+            raise ValueError("nenhuma bandeirola medida ainda - faca uma "
+                             "travessia completa antes")
+        medicao = self.sensor_andar.medicoes[-1]
+        if medicao.andar is None:
+            raise ValueError("a ultima medicao nao corresponde a nenhum andar")
+        correcao = posicao.mm_do_andar(medicao.andar) - medicao.centro_mm
+        self.encoder.zera(posicao.contagem_de_mm(self.posicao_mm + correcao))
+        return medicao, correcao
+
     # ----------------------------------------------------------------- malha
     def _laco(self):
         while not self._encerrar.wait(PERIODO_DA_MALHA_S):
@@ -113,8 +156,28 @@ class Cabine:
     def _ciclo(self, dt):
         self._supervisiona_fim_de_curso()
         if self._destino_mm is not None:
+            self._supervisiona_travamento()
+        if self._destino_mm is not None:
             self._passo_de_controle()
         self.motor.passo(dt)
+
+    def _supervisiona_travamento(self):
+        """Aborta se o motor esta comandado e a cabine nao anda."""
+        if self.motor.duty <= 0.0:
+            self._parado_desde = None
+            return
+        agora = time.monotonic()
+        mm = self.posicao_mm
+        if self._posicao_de_referencia is None \
+                or abs(mm - self._posicao_de_referencia) >= MOVIMENTO_MINIMO_MM:
+            self._posicao_de_referencia = mm
+            self._parado_desde = agora
+            return
+        if agora - self._parado_desde >= TEMPO_DE_TRAVAMENTO_S:
+            self._aborta("TRAVAMENTO: %.1f s de motor a %.0f%% sem a cabine "
+                         "sair de %.0f mm. Destino provavelmente inalcancavel "
+                         "- a contagem pode ter derivado (use 'ancora')"
+                         % (agora - self._parado_desde, self.motor.duty, mm))
 
     def _supervisiona_fim_de_curso(self):
         """Roda em TODO ciclo, inclusive sem viagem em andamento."""
@@ -122,14 +185,18 @@ class Cabine:
         subindo = self.motor.direcao == pinos.SUBIR
         descendo = self.motor.direcao == pinos.DESCER
         if subindo and mm >= posicao.TOPO_MM - MARGEM_DE_FIM_DE_CURSO_MM:
-            self._aborta("topo do poco (%d mm)" % posicao.TOPO_MM)
+            self._aborta("FIM DE CURSO: movimento interrompido no topo do poco "
+                         "(%d mm)" % posicao.TOPO_MM)
         elif descendo and mm <= posicao.FUNDO_MM + MARGEM_DE_FIM_DE_CURSO_MM:
-            self._aborta("fundo do poco (%d mm)" % posicao.FUNDO_MM)
+            self._aborta("FIM DE CURSO: movimento interrompido no fundo do poco "
+                         "(%d mm)" % posicao.FUNDO_MM)
 
     def _aborta(self, motivo):
         self._destino_mm = None
+        self._parado_desde = None
+        self._posicao_de_referencia = None
         self.motor.para()
-        print("FIM DE CURSO: movimento interrompido no %s" % motivo, flush=True)
+        print(motivo, flush=True)
 
     def _passo_de_controle(self):
         mm = self.posicao_mm

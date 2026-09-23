@@ -99,3 +99,52 @@ def test_encerramento_deixa_a_placa_limpa(cabine):
     cabine.finaliza()
     assert cabine.motor.duty == 0.0
     assert cabine.motor.direcao == pinos.FREIO
+
+
+def test_ancora_corrige_a_deriva_da_contagem(cabine):
+    """Perde a referencia e reancora pela bandeirola.
+
+    A viagem tem de ATRAVESSAR a bandeirola por inteiro: parar dentro dela nao
+    produz borda de saida, e sem as duas bordas nao ha centro para medir.
+    """
+    cabine.vai_para_andar(2)          # do 0 ao 2, atravessando o andar 1
+    espera_chegar(cabine)
+    assert cabine.sensor_andar.medicoes, "a travessia do andar 1 deveria medir"
+
+    # A contagem passa a mentir em 150 mm, como quando o widget e resetado no
+    # meio da sessao ou quando bordas se perdem por ruido eletrico.
+    # Atrasa a contagem em 150 mm: a cabine passa a se julgar mais baixa do que
+    # esta. Adiantar em vez de atrasar poria o destino ABAIXO do fundo do poco,
+    # que e o caso de travamento coberto por test_travamento_aborta_a_viagem.
+    verdadeira = cabine.posicao_mm
+    cabine.zera(verdadeira - 150)
+
+    cabine.vai_para_andar(0)          # atravessa o andar 1 de novo, ja torto
+    espera_chegar(cabine)
+
+    # A bandeirola do andar 1 esta em 3000 mm de verdade; com a contagem 150 mm
+    # adiantada, o centro dela e medido em ~3150. Esse erro E a deriva.
+    medicao = cabine.sensor_andar.medicoes[-1]
+    assert medicao.erro_mm == pytest.approx(-150, abs=15)
+
+    antes = cabine.posicao_mm
+    _, correcao = cabine.ancora()
+    assert correcao == pytest.approx(150, abs=15), \
+        "a correcao deveria desfazer a deriva de 150 mm"
+    assert cabine.posicao_mm == pytest.approx(antes + correcao, abs=2)
+
+
+def test_travamento_aborta_a_viagem(cabine):
+    """Destino inalcancavel: a cabine encosta no batente e a malha desiste.
+
+    Sem isto o motor ficaria comandado indefinidamente contra o fim de curso
+    mecanico - numa bancada compartilhada, estragando o equipamento alheio.
+    """
+    cabine.zera(2000)                 # a contagem mente: a cabine esta em 0
+    cabine.vai_para_mm(0)             # exige descer 2000 mm que nao existem
+    tempo_limite = time.monotonic() + 30
+    while cabine.em_viagem and time.monotonic() < tempo_limite:
+        time.sleep(0.05)
+    assert not cabine.em_viagem, "a malha deveria ter abortado por travamento"
+    assert cabine.motor.duty == 0.0
+    assert cabine.motor.direcao == pinos.FREIO
