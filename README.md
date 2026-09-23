@@ -184,6 +184,25 @@ As portas mudam — confira sempre o cabeçalho do subcanal.
 **Bot do Discord:** `/cadastrar` associa a conta Discord ao login do SSH;
 `/reiniciar_senha` devolve a senha à matrícula.
 
+### Dashboard (widget do simulador)
+
+O widget é um dashboard **ThingsBoard**, um por placa. É onde a cabine aparece,
+onde fica o botão **"Obstruir porta"** e onde se confere o nivelamento exigido
+pelo requisito 8. Link da rasp42:
+
+```
+https://tb.fse.lappis.rocks/dashboard/2f3c9990-b11b-11f1-9a0b-0359851b5c05?publicId=86d17ff0-e010-11ef-9ab8-4774ff1517e8
+```
+
+Abas: `default`, `pr_dio_completo` (GPIO), `uart` (Entrega 2) e
+**`entrega_1___elevador`** — esta última é a da Entrega 1.
+
+> **Confira sempre de qual placa é a aba aberta.** A URL do ThingsBoard carrega
+> o histórico de navegação no parâmetro `state`, e é fácil acabar com a aba do
+> elevador apontada para o dispositivo de outra rasp. Se o que você comanda não
+> aparece no widget, é a primeira coisa a checar. Os links das demais placas
+> estão na seção "Links dos Dashboards" do enunciado.
+
 ### Estado conferido na rasp42 (23/09/2026)
 
 - SPI **desabilitado** → BCM 11 livre (`func=INPUT pull=NONE`)
