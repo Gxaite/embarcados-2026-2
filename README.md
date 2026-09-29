@@ -4,8 +4,16 @@ Repositório de trabalho do grupo, sincronizado com a Raspberry Pi da bancada.
 Este arquivo é o **contexto do projeto**: o que precisa existir, o que vale nota,
 e o que a bancada impõe. Consulte antes de decidir qualquer coisa.
 
-- **Turma:** ver `CLAUDE.md` / a definir no README final
-- **Enunciado oficial:** `gitlab.com/fse_fga/trabalhos-2026_2/trabalho-1-2026-2`
+### Integrantes
+
+Listados no repositório de entrega.
+
+### Vídeo da Entrega 1
+
+> *Link a ser adicionado.*
+
+
+**Enunciado oficial:** `gitlab.com/fse_fga/trabalhos-2026_2/trabalho-1-2026-2`
 
 ---
 
