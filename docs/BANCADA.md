@@ -1,250 +1,130 @@
-# Guia da Bancada — Raspberry Pi, Cabine 1
+# Guia da Bancada
 
-Documento de montagem, configuração e diagnóstico da placa para o Trabalho 1.
-Siga na ordem: pinagem → conflitos → configuração do SO → bring-up.
+Operação da Raspberry Pi remota para a Cabine 1: acesso, restrições da placa
+compartilhada, verificação por etapas e diagnóstico.
 
-> **O que este documento afirma e o que não afirma.** Os números de GPIO vêm da
-> Tabela 1 do enunciado; as posições físicas no header e os conflitos de
-> periférico vêm do mapa de pinos da Raspberry Pi 3. **O enunciado não
-> especifica o conector físico entre a Raspberry Pi e a ESP32** que roda o
-> simulador — isso é dado na bancada. A Seção 7 lista o que vocês precisam
-> confirmar no laboratório antes de energizar.
+## 1. Acesso
 
----
+As placas são acessadas por SSH, em horários reservados no Discord da
+disciplina. Porta e endereço de cada placa estão no cabeçalho do subcanal.
 
-## 1. Pinagem da Cabine 1
+Procedimento de cada sessão:
 
-| Sinal | Função | BCM | Pino físico | Direção |
-|:--|:--|:-:|:-:|:--|
-| `PWM` | Potência do motor de tração | 12 | **32** | Saída (PWM 1 kHz) |
-| `DIR1` | Direção 1 | 17 | **11** | Saída on/off |
-| `DIR2` | Direção 2 | 27 | **13** | Saída on/off |
-| `ENC_A` | Encoder canal A | 5 | **29** | Entrada (interrupção) |
-| `ENC_B` | Encoder canal B | 6 | **31** | Entrada (interrupção) |
-| `CORTINA` | Cortina de luz da porta | 16 | **36** | Entrada on/off |
-| `SENSOR_ANDAR` | Bandeirola de andar | 11 | **23** | Entrada on/off |
+1. anunciar a placa e a duração no subcanal;
+2. conectar por SSH e abrir uma sessão `tmux`;
+3. atualizar o código com `git pull`;
+4. ao final, liberar a GPIO com `python3 -m ferramentas.bringup limpa`;
+5. encerrar a sessão.
 
-> **O número BCM não é a posição no conector.** `DIR1` é o GPIO 17, que fica no
-> pino **11**; `SENSOR_ANDAR` é o GPIO 11, que fica no pino **23**. Contar pinos
-> no header achando que são números BCM é o erro de montagem mais comum, e os
-> dois casos acima trocam exatamente um pelo outro. O código usa
-> `GPIO.setmode(GPIO.BCM)`, então **sempre** o número BCM.
+## 2. Restrições da placa compartilhada
 
-### Header de 40 pinos — `◀` marca os pinos da Cabine 1
-
-```
-                      +-------------+
-             3V3  ( 1)| o         o |( 2)  5V
-    GPIO2  (SDA1) ( 3)| o         o |( 4)  5V
-    GPIO3  (SCL1) ( 5)| o         o |( 6)  GND
-    GPIO4         ( 7)| o         o |( 8)  GPIO14 (TXD)
-             GND  ( 9)| o         o |(10)  GPIO15 (RXD)
- ◀  GPIO17  DIR1  (11)| o         o |(12)  GPIO18
- ◀  GPIO27  DIR2  (13)| o         o |(14)  GND
-    GPIO22        (15)| o         o |(16)  GPIO23
-             3V3  (17)| o         o |(18)  GPIO24
-    GPIO10 (MOSI) (19)| o         o |(20)  GND
-    GPIO9  (MISO) (21)| o         o |(22)  GPIO25
- ◀  GPIO11  SENSOR(23)| o         o |(24)  GPIO8  (CE0)
-             GND  (25)| o         o |(26)  GPIO7  (CE1)
-    GPIO0  (ID_SD)(27)| o         o |(28)  GPIO1  (ID_SC)
- ◀  GPIO5   ENC_A (29)| o         o |(30)  GND
- ◀  GPIO6   ENC_B (31)| o         o |(32)  GPIO12  PWM      ◀
-    GPIO13        (33)| o         o |(34)  GND
-    GPIO19        (35)| o         o |(36)  GPIO16  CORTINA  ◀
-    GPIO26        (37)| o         o |(38)  GPIO20
-             GND  (39)| o         o |(40)  GPIO21
-                      +-------------+
-```
-
-**GND mais próximos de cada grupo:** pino 9 (perto de DIR1/DIR2), pino 25 (perto
-do SENSOR_ANDAR) e pino 30 ou 34 (perto do encoder e do PWM). Use o GND mais
-curto de cada grupo — fio de terra longo em sinal de encoder gera contagem
-fantasma.
-
-### Cabines 2 e 3 (Entrega Final, para planejar o chicote)
-
-| Sinal | Cabine 2 (BCM / físico) | Cabine 3 (BCM / físico) |
-|:--|:-:|:-:|
-| `PWM` | 13 / 33 | 18 / 12 |
-| `DIR1` | 22 / 15 | 24 / 18 |
-| `DIR2` | 23 / 16 | 25 / 22 |
-| `ENC_A` | 20 / 38 | 7 / 26 |
-| `ENC_B` | 21 / 40 | 8 / 24 |
-| `CORTINA` | 26 / 37 | 19 / 35 |
-| `SENSOR_ANDAR` | 0 / 27 | 1 / 28 |
-
----
-
-## 2. Conflitos com periféricos — leia antes de ligar
-
-Vários pinos do trabalho têm função alternativa. Se o periférico correspondente
-estiver habilitado, o kernel toma o pino e a GPIO simplesmente não responde —
-sem mensagem de erro.
-
-| Pino do trabalho | Função alternativa | O que fazer |
-|:--|:--|:--|
-| `SENSOR_ANDAR` = BCM 11 (Cab. 1) | **SPI0 SCLK** | Manter o **SPI desabilitado** |
-| `ENC_A`/`ENC_B` = BCM 7, 8 (Cab. 3) | **SPI0 CE1 / CE0** | idem |
-| `SENSOR_ANDAR` = BCM 0, 1 (Cab. 2 e 3) | **ID_SD / ID_SC**, EEPROM de HAT | Ver nota abaixo |
-| BCM 2, 3 | **I2C1** — BMP280 da Entrega 2 | Habilitar I2C, **não usar como GPIO** |
-| BCM 14, 15 | **UART** — MODBUS da Entrega 2 | Habilitar a serial, **desabilitar o console** |
-
-> **BCM 0 e 1 (pinos 27 e 28)** são reservados à EEPROM de identificação de HAT.
-> A Raspberry Pi os sonda no boot. Eles funcionam como GPIO comum depois que o
-> sistema sobe, mas se houver um shield com EEPROM no barramento, esses pinos
-> não estarão livres. Isso só afeta as Cabines 2 e 3, ou seja, a Entrega Final —
-> **a Cabine 1 não usa nenhum dos dois**. Vale confirmar cedo, porque muda o
-> plano de montagem.
-
-Como conferir o que está ativo:
-
-```bash
-ls /dev/spidev*        # se listar algo, o SPI está ligado — desabilite
-ls /dev/i2c-*          # esperado a partir da Entrega 2
-ls -l /dev/serial0     # esperado a partir da Entrega 2
-raspi-gpio get 11      # mostra o modo atual do pino (esperado: INPUT)
-```
-
----
+| Restrição | Consequência |
+|:--|:--|
+| Sem `raspi-config` e sem reboot | a configuração de SPI, I2C e UART é a que estiver na placa |
+| Fiação já montada | não há conferência física; a pinagem é validada pela etapa `entradas` |
+| Queda de SSH encerra o processo | o programa trata `SIGHUP` e deve rodar dentro de `tmux` |
+| `RPi.GPIO` 0.7.1a4 no Python do sistema | não é necessário ambiente virtual |
 
 ## 3. Regras elétricas
 
-1. **A GPIO da Raspberry Pi é 3,3 V e não tolera 5 V.** Aplicar 5 V num pino de
-   entrada danifica o SoC de forma permanente e não há fusível no caminho.
-2. A ESP32 também é 3,3 V, então o enlace entre as duas é direto. **Qualquer
-   sinal de 5 V na bancada exige conversor de nível** — confirme antes de ligar.
-3. **GND comum é obrigatório.** Raspberry Pi e ESP32 precisam compartilhar
-   referência, senão os níveis lógicos ficam indefinidos e as entradas oscilam.
-4. Corrente máxima por pino: 16 mA, e 50 mA somados em todos os pinos. O motor
-   **não** é alimentado pela Raspberry Pi — o pino de PWM é sinal de comando.
-5. Faça toda a montagem com a placa **desenergizada**.
+1. A GPIO da Raspberry Pi opera em 3,3 V e não tolera 5 V.
+2. Raspberry Pi e ESP32 devem compartilhar o GND.
+3. Corrente máxima de 16 mA por pino e 50 mA no total. O pino de PWM é sinal de
+   comando; o motor não é alimentado pela placa.
 
----
+## 4. Conflitos de periférico
 
-## 4. Configuração do sistema
+Com o periférico habilitado, o kernel assume o pino e a GPIO deixa de responder
+sem emitir erro.
 
-```bash
-sudo raspi-config
-#  Interface Options > I2C    -> Enable    (BMP280, Entrega 2)
-#  Interface Options > Serial -> login shell: NO / hardware: YES  (MODBUS)
-#  Interface Options > SPI    -> Disable   (libera o BCM 11 = SENSOR_ANDAR)
-sudo reboot
-```
+| Pino | Função alternativa | Impacto |
+|:--|:--|:--|
+| BCM 0, `SENSOR_ANDAR` da Cabine 1 | ID_SD, EEPROM de HAT | sondado no boot; funciona como GPIO depois, desde que não haja HAT com EEPROM |
+| BCM 1, `SENSOR_ANDAR` da Cabine 3 | ID_SC | idem |
+| BCM 7 e 8, encoder da Cabine 3 | SPI0 CE1 e CE0 | exige SPI desabilitado |
+| BCM 11, `PWM` da Cabine 2 | SPI0 SCLK | exige SPI desabilitado |
+| BCM 2 e 3 | I2C1 | reservados ao sensor de temperatura da Entrega 2 |
+| BCM 14 e 15 | UART | reservados ao MODBUS da Entrega 2 |
 
-Projeto:
+Verificação:
 
 ```bash
-git clone git@github.com:Gxaite/Embarcados-trabalho-2026-2.git
-cd Embarcados-trabalho-2026-2
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt   # aqui a RPi.GPIO instala de fato
+ls /dev/spidev*       # não deve listar nada
+raspi-gpio get 0      # modo atual do SENSOR_ANDAR
 ```
 
-Verificação rápida de que a biblioteca enxerga a placa:
+## 5. Dashboard
+
+O simulador é exibido em um dashboard ThingsBoard, um por placa. A Entrega 1
+usa a aba "Elevador Único".
+
+```
+https://tb.fse.lappis.rocks/dashboard/d39cd4a0-b11b-11f1-9a0b-0359851b5c05?publicId=86d17ff0-e010-11ef-9ab8-4774ff1517e8
+```
+
+| Controle | Uso |
+|:--|:--|
+| Enviar cabine ao andar 0, 1 ou 2 | move a cabine sem passar pelo programa; útil para validar encoder e sensor de andar antes do motor |
+| Obstruir porta (3 s) | estímulo da cortina |
+| Sensor de Andar | indica se a cabine está dentro de uma bandeirola |
+| Resetar bancada | zera a posição do simulador sem mover a cabine |
+
+A URL do ThingsBoard guarda o histórico de navegação no parâmetro `state` e
+pode passar a apontar para o dispositivo de outra placa. Se um comando não se
+reflete no dashboard, a primeira verificação é o dispositivo exibido.
+
+## 6. Verificação por etapas
+
+A ordem vai da menor para a maior consequência: entradas antes de saídas,
+saídas antes de movimento. As etapas `direcao` e `pwm` movem o motor e pedem
+confirmação.
 
 ```bash
-.venv/bin/python -c "import RPi.GPIO as G; print(G.RPI_INFO)"
+python3 -m ferramentas.bringup mapa       # imprime a pinagem, sem acessar a GPIO
+python3 -m ferramentas.bringup entradas   # lê CORTINA e SENSOR_ANDAR
+python3 -m ferramentas.bringup encoder    # contagem e transições inválidas
+python3 -m ferramentas.bringup direcao    # percorre a tabela de direção
+python3 -m ferramentas.bringup pwm        # rampa de 0 a 30% e duty de arranque
+python3 -m ferramentas.bringup limpa      # PWM em zero, DIR em freio, GPIO liberada
 ```
 
----
+Opções: `--simulado` para ensaiar sem a placa, `--segundos` para a duração das
+etapas de leitura e `--pinagem nova|antiga` para escolher a tabela de pinos.
 
-## 5. Bring-up — ordem de ativação
+| Etapa | Critério de aprovação |
+|:--|:--|
+| `entradas` | "Obstruir porta" leva `CORTINA` a 1 e de volta a 0; `SENSOR_ANDAR` vai a 1 dentro da bandeirola |
+| `encoder` | a contagem sobe ao subir e desce ao descer; `transicoes_invalidas` permanece em zero ou próximo disso |
+| `direcao` | cada linha da tabela produz o movimento esperado |
+| `pwm` | a cabine só se move a partir de aproximadamente 10% de duty |
 
-Não ligue tudo de uma vez. Cada etapa isola uma classe de falha, e a ordem é a
-da menor para a maior consequência: **entradas antes de saídas, saídas antes de
-movimento.**
+Se nenhuma entrada reagir ao dashboard com a pinagem nova, repetir a etapa
+`entradas` com `--pinagem antiga`.
 
-```bash
-.venv/bin/python -m ferramentas.bringup mapa       # 1. confere a pinagem
-.venv/bin/python -m ferramentas.bringup entradas   # 2. só lê, não move nada
-.venv/bin/python -m ferramentas.bringup encoder    # 3. conta bordas
-.venv/bin/python -m ferramentas.bringup direcao    # 4. move o motor
-.venv/bin/python -m ferramentas.bringup pwm        # 5. rampa de potência
-```
-
-### Etapa 1 — Pinagem
-Imprime BCM ↔ pino físico. Confira fio a fio contra a Seção 1 **antes** de
-energizar.
-
-### Etapa 2 — Entradas (não move nada)
-Mostra o nível de `CORTINA` e `SENSOR_ANDAR` em tempo real.
-
-- Aperte **"Obstruir porta"** no widget → `CORTINA` deve ir a 1 e voltar a 0.
-- Empurre a cabine pelo widget até um andar → `SENSOR_ANDAR` vai a 1 dentro da
-  bandeirola.
-- Se um pino fica preso em 1 ou 0, o problema é fiação ou periférico tomando o
-  pino (Seção 2) — não é o código.
-
-### Etapa 3 — Encoder
-Mostra a contagem e o número de **transições inválidas**. Mova a cabine pelo
-widget:
-
-- A contagem deve **subir** ao subir e **descer** ao descer. Invertido → `ENC_A`
-  e `ENC_B` estão trocados.
-- 1 contagem = 1 mm. Um andar = 3000 contagens.
-- `transicoes_invalidas` deve ficar em **zero**. Ver Seção 6.
-
-### Etapa 4 — Direção (o motor se move)
-Percorre as quatro linhas da Tabela 2 com confirmação a cada passo. Mantenha a
-mão no Ctrl+C. Se **subir** desce, `DIR1` e `DIR2` estão trocados.
-
-### Etapa 5 — PWM
-Rampa de 0 a 30%. A cabine não deve sair do lugar abaixo de ~10% — é o atrito
-estático descrito no enunciado, não defeito.
-
-Passadas as cinco etapas, o programa principal está liberado:
-
-```bash
-.venv/bin/python -m src.main
-```
-
----
-
-## 6. Diagnóstico
+## 7. Diagnóstico
 
 | Sintoma | Causa provável |
 |:--|:--|
-| Entrada sempre em 0 ou sempre em 1 | Fio no pino errado (BCM × físico), GND não comum, ou periférico tomou o pino (Seção 2) |
-| Contagem do encoder anda ao contrário | `ENC_A` e `ENC_B` trocados |
-| Contagem anda pela metade ou aos saltos | Só um dos canais está ligado, ou um deles não gera interrupção |
-| `transicoes_invalidas` subindo | O Python está perdendo bordas. Reduza `DUTY_MAXIMO` em `src/controle/cabine.py` e confirme se o número para de crescer |
-| Cortina contando obstruções fantasmas | `DEBOUNCE_MS` curto demais em `src/controle/cortina.py` |
-| Motor zumbe mas não anda | Duty abaixo de 10% — atrito estático, comportamento esperado |
-| Cabine sobe quando manda descer | `DIR1`/`DIR2` trocados |
-| Cabine para fora dos ±10 mm | Sintonia: ajuste `GANHO_P` e `DUTY_APROXIMACAO` |
-| Nada responde e nenhum erro aparece | SPI habilitado tomando o BCM 11, ou `setmode` divergente |
+| Entrada fixa em 0 ou em 1 | pinagem divergente, GND não comum ou periférico ocupando o pino |
+| Contagem anda no sentido oposto | `ENC_A` e `ENC_B` invertidos |
+| Contagem anda pela metade | um dos canais sem interrupção |
+| `transicoes_invalidas` crescendo | bordas perdidas; reduzir `DUTY_MAXIMO` em `src/controle/cabine.py` |
+| Obstruções duplicadas | debounce insuficiente em `src/controle/cortina.py` |
+| Motor não arranca | duty abaixo de 10%, atrito estático |
+| Cabine sobe ao comandar descer | `DIR1` e `DIR2` invertidos |
+| Contagem e dashboard divergem | "Resetar bancada" acionado com o programa em execução; ver ancoragem no README |
+| Cabine desce após encerrar o programa | `DIR1`/`DIR2` liberados; encerrar pelo programa ou pela etapa `limpa` |
 
-> **`transicoes_invalidas` é o indicador mais importante da bancada.** Ele conta
-> saltos de estado impossíveis na quadratura, que só acontecem quando uma borda
-> de interrupção se perde. Se ele cresce durante uma viagem, a posição está
-> derivando e o nivelamento vai falhar de forma intermitente — exatamente o tipo
-> de defeito que não aparece no simulador.
+## 8. Parâmetros de ajuste
 
----
-
-## 7. A confirmar na bancada
-
-- [ ] Como a Raspberry Pi se conecta fisicamente à ESP32 (conector, chicote, shield)
-- [ ] Se há algum sinal em 5 V no caminho — se houver, conversor de nível é obrigatório
-- [ ] Se o shield do BMP280 ocupa BCM 0 e 1 (afeta as Cabines 2 e 3, não a 1)
-- [ ] Qual cabine física corresponde à Cabine 1 do enunciado
-- [ ] Onde fica o botão "Obstruir porta" no widget
-
-## 8. Registro de medições
-
-Preencher no laboratório — estes números entram no README da entrega.
-
-| Grandeza | Valor medido | Observação |
-|:--|:--|:--|
-| Largura da bandeirola do andar 0 | | pelas duas bordas |
-| Largura da bandeirola do andar 1 | | |
-| Largura da bandeirola do andar 2 | | |
-| Erro do centro vs. nominal — andar 0 | | |
-| Erro do centro vs. nominal — andar 1 | | |
-| Erro do centro vs. nominal — andar 2 | | |
-| `GANHO_P` final | | |
-| `TAXA_RAMPA` final | | |
-| `DUTY_MAXIMO` final | | |
-| Duty mínimo de arranque medido | | enunciado sugere ~10% |
-| `transicoes_invalidas` após 10 viagens | | deve ser 0 |
+| Parâmetro | Valor atual | Arquivo |
+|:--|:-:|:--|
+| `GANHO_P` | 0,06 %/mm | `src/controle/cabine.py` |
+| `DUTY_MAXIMO` | 60% | `src/controle/cabine.py` |
+| `DUTY_DE_APROXIMACAO` | 15% | `src/controle/cabine.py` |
+| `DISTANCIA_DE_APROXIMACAO_MM` | 300 mm | `src/controle/cabine.py` |
+| `MARGEM_DE_FIM_DE_CURSO_MM` | 25 mm | `src/controle/cabine.py` |
+| `TAXA_RAMPA_POR_S` | 120 %/s | `src/controle/motor.py` |
+| `DEBOUNCE_MS` da cortina | 20 ms | `src/controle/cortina.py` |
+| `DEBOUNCE_MS` do sensor de andar | 2 ms | `src/controle/sensor_andar.py` |
+| `LARGURA_MINIMA_MM` | 60 mm | `src/controle/sensor_andar.py` |
