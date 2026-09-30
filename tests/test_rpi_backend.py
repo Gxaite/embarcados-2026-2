@@ -64,6 +64,9 @@ class GPIOFalso(types.ModuleType):
 
     def setup(self, pino, direcao, pull_up_down=None, initial=None):
         self.setups.append((pino, direcao, pull_up_down, initial))
+        # Como a rpi-lgpio da rasp35: setup() libera a linha e reivindica de
+        # novo, e a deteccao de borda que havia no pino se perde.
+        self.eventos.pop(pino, None)
         if direcao == self.OUT:
             self.saidas[pino] = initial
 
@@ -172,6 +175,27 @@ def test_limpa_preserva_os_pinos_pedidos(backend_rpi, gpio_falso):
     assert pinos.CORTINA in gpio_falso.limpos
     assert pinos.DIR1 not in gpio_falso.limpos
     assert pinos.DIR2 not in gpio_falso.limpos
+
+
+def test_segundo_setup_nao_derruba_a_interrupcao(backend_rpi, gpio_falso):
+    """Na rpi-lgpio, setup(IN) repetido apaga a borda: com isso, na rasp35, o
+    programa principal nao recebia nenhuma interrupcao."""
+    backend_rpi.configura_entrada(pinos.SENSOR_ANDAR)
+    backend_rpi.registra_interrupcao(pinos.SENSOR_ANDAR, bk.AMBAS,
+                                     lambda p, v: None)
+    backend_rpi.configura_entrada(pinos.SENSOR_ANDAR)
+    assert pinos.SENSOR_ANDAR in gpio_falso.eventos
+    assert sum(1 for s in gpio_falso.setups if s[0] == pinos.SENSOR_ANDAR) == 1
+
+
+def test_pwm_solto_antes_do_cleanup(backend_rpi, gpio_falso):
+    """Na rpi-lgpio, o __del__ do PWM depois do cleanup() levanta TypeError."""
+    canal = backend_rpi.cria_pwm(pinos.PWM, 1000)
+    canal.ajusta(10.0)
+    backend_rpi.limpa()
+    assert canal._pwm is None
+    canal.ajusta(5.0)          # depois de finalizado, nao faz nada
+    canal.finaliza()
 
 
 def test_cabine_inteira_sobre_o_backend_da_placa(gpio_falso):

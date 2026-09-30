@@ -3,6 +3,16 @@
 A importacao da RPi.GPIO e tardia, dentro do __init__, de proposito: assim o
 resto do projeto pode ser importado e testado em qualquer maquina, e so quem
 realmente vai falar com a placa paga o preco de exigir a biblioteca.
+
+As placas do laboratorio nao tem todas a mesma biblioteca. A rasp42 usa a
+RPi.GPIO original (0.7.1a4); a rasp35 usa a rpi-lgpio, que reimplementa a mesma
+API sobre a lgpio. O codigo abaixo evita as duas diferencas que importam:
+
+- na rpi-lgpio, setup(IN) libera e reivindica a linha de novo, e isso derruba
+  a deteccao de borda ja registrada no pino. Um pino so e configurado uma vez;
+- na rpi-lgpio, o GPIO.PWM para a si mesmo no __del__, e se isso acontece
+  depois do cleanup() o chip ja foi fechado e o __del__ levanta TypeError.
+  A referencia ao PWM e solta antes do cleanup.
 """
 from . import backend
 from .backend import Backend, CanalPWM
@@ -14,6 +24,8 @@ class _CanalPWMRPi(CanalPWM):
         self._iniciado = False
 
     def ajusta(self, duty_porcento):
+        if self._pwm is None:
+            return
         duty = max(0.0, min(100.0, float(duty_porcento)))
         if not self._iniciado:
             # start() so pode ser chamado uma vez; daí em diante e
@@ -24,9 +36,14 @@ class _CanalPWMRPi(CanalPWM):
             self._pwm.ChangeDutyCycle(duty)
 
     def finaliza(self):
+        if self._pwm is None:
+            return
         if self._iniciado:
             self._pwm.stop()
             self._iniciado = False
+        # Soltar a referencia aqui faz o __del__ da rpi-lgpio rodar agora, com
+        # o chip ainda aberto, e nao na saida do interpretador.
+        self._pwm = None
 
 
 class BackendRPi(Backend):
@@ -37,6 +54,7 @@ class BackendRPi(Backend):
         GPIO.setwarnings(False)
         self._pwms = []
         self._pinos_configurados = set()
+        self._entradas = {}          # pino -> pull ja aplicado
 
         self._pull = {
             backend.SEM_PULL: GPIO.PUD_OFF,
@@ -51,11 +69,18 @@ class BackendRPi(Backend):
 
     def configura_saida(self, pino, valor_inicial=0):
         self._pinos_configurados.add(pino)
+        self._entradas.pop(pino, None)
         self._GPIO.setup(pino, self._GPIO.OUT,
                          initial=self._GPIO.HIGH if valor_inicial else self._GPIO.LOW)
 
     def configura_entrada(self, pino, pull=backend.SEM_PULL):
+        # O Sensor de Andar e lido pelos dois caminhos, interrupcao e polling,
+        # e os dois configuram o pino. Repetir o setup() na rpi-lgpio apagaria
+        # a interrupcao registrada pelo primeiro.
+        if self._entradas.get(pino) == pull:
+            return
         self._pinos_configurados.add(pino)
+        self._entradas[pino] = pull
         self._GPIO.setup(pino, self._GPIO.IN, pull_up_down=self._pull[pull])
 
     def escreve(self, pino, valor):
@@ -87,6 +112,7 @@ class BackendRPi(Backend):
         for canal in self._pwms:
             canal.finaliza()
         self._pwms = []
+        self._entradas = {}
         if not preserva:
             self._GPIO.cleanup()
             return
