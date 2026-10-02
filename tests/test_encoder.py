@@ -41,12 +41,28 @@ def test_ida_e_volta_volta_a_zero(backend):
     assert encoder.contagem == 0
 
 
-def test_salto_impossivel_vira_transicao_invalida(backend):
-    """00 -> 11 e salto de dois estados: borda perdida, nao contagem."""
+def test_salto_sem_sentido_conhecido_nao_conta(backend):
+    """00 -> 11 logo na partida: borda perdida, sem passo anterior para dar o sentido."""
     encoder = EncoderQuadratura(backend)
     backend.niveis[pinos.ENC_A] = 1
     backend.provoca(pinos.ENC_B, 1)        # 00 -> 11 de uma vez
-    assert encoder.contagem == 0, "nao se deve chutar contagem"
+    assert encoder.contagem == 0
+    assert encoder.transicoes_invalidas == 1
+
+
+def test_salto_conta_dois_passos_no_sentido_do_movimento(backend):
+    encoder = EncoderQuadratura(backend)
+    passo(backend, 0, 1)                   # 00 -> 01, subindo: +1
+    backend.niveis[pinos.ENC_A] = 1
+    backend.provoca(pinos.ENC_B, 0)        # 01 -> 10, salto: perdeu o 11
+    assert encoder.contagem == 3
+    assert encoder.transicoes_invalidas == 1
+
+    encoder = EncoderQuadratura(backend)   # parte de 10
+    passo(backend, 1, 1)                   # 10 -> 11, descendo: -1
+    backend.niveis[pinos.ENC_A] = 0
+    backend.provoca(pinos.ENC_B, 0)        # 11 -> 00, salto: perdeu o 01
+    assert encoder.contagem == -3
     assert encoder.transicoes_invalidas == 1
 
 

@@ -185,7 +185,7 @@ há espera bloqueante na rampa.
 |:--|:-:|:--|
 | Taxa da rampa | 120 %/s | `controle/motor.py` |
 | Duty mínimo de movimento | 10% | `controle/motor.py` |
-| Duty máximo em viagem | 60% | `controle/cabine.py` |
+| Duty máximo em viagem | 40% | `controle/cabine.py` |
 | Teto nos últimos 300 mm | 15% | `controle/cabine.py` |
 
 Duty diferente de zero nunca é aplicado abaixo de 10%: nesse regime o motor
@@ -214,8 +214,9 @@ Interrupção em ambas as bordas dos canais A e B, o que resulta em decodificaç
 O par (A, B) percorre o ciclo de Gray `00, 01, 11, 10` ao subir e o ciclo
 inverso ao descer. Cada transição é consultada em uma tabela que devolve +1 ou
 -1. Um salto entre estados não adjacentes, como `00` para `11`, indica borda
-perdida: a transição é descartada e contabilizada em `transicoes_invalidas`, em
-vez de gerar um incremento arbitrário.
+perdida. A transição é contabilizada em `transicoes_invalidas` e conta dois
+passos no sentido do último passo válido, já que a cabine não inverte o sentido
+entre duas bordas.
 
 O contador é de 32 bits com sinal e satura em `-2^31` e `2^31 - 1`.
 

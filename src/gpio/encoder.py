@@ -11,9 +11,14 @@ pulsos por metro do enunciado, isso da 1 contagem = 1 mm, e 3000 contagens por
 andar.
 
 Um salto de dois estados (00 -> 11, por exemplo) e impossivel na quadratura: so
-acontece quando uma borda se perde. Nesse caso NAO se chuta a contagem - o
-evento vai para transicoes_invalidas, que e o indicador mais honesto de que o
-Python nao esta acompanhando o encoder.
+acontece quando uma borda se perde. O salto sozinho nao diz o sentido, mas a
+cabine nao inverte no meio de dois passos: o salto vale dois passos no sentido
+do ultimo passo valido. O evento tambem vai para transicoes_invalidas, que e o
+indicador de que o Python nao esta acompanhando o encoder.
+
+Na rasp34, a 60% de duty, a contagem ficou 19 mm atras do dashboard em uma
+viagem de 3000 mm, com 5 saltos registrados. Descartar o salto jogava fora duas
+contagens a cada vez.
 """
 import threading
 
@@ -40,6 +45,7 @@ class EncoderQuadratura:
         self._trava = threading.Lock()
         self._contagem = 0
         self.transicoes_invalidas = 0
+        self._ultimo_passo = 0
 
         backend.configura_entrada(self.pino_a)
         backend.configura_entrada(self.pino_b)
@@ -70,7 +76,9 @@ class EncoderQuadratura:
             self._estado = novo
             if passo is None:
                 self.transicoes_invalidas += 1
-                return
+                passo = 2 * self._ultimo_passo
+            else:
+                self._ultimo_passo = passo
             self._contagem = self._satura(self._contagem + passo)
 
     @staticmethod

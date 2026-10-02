@@ -25,7 +25,9 @@ from .sensor_andar import SensorAndar
 
 PERIODO_DA_MALHA_S = 0.050
 GANHO_P = 0.06                 # duty por mm de erro
-DUTY_MAXIMO = 60.0
+# 40% e nao 60%: a 60% a rasp34 perdeu bordas do encoder (5 saltos e 19 mm de
+# atraso em um andar), enquanto a 40% a rasp42 nao registrou nenhum salto.
+DUTY_MAXIMO = 40.0
 DUTY_DE_APROXIMACAO = 15.0     # teto nos ultimos milimetros
 DISTANCIA_DE_APROXIMACAO_MM = 300.0
 # Margem do fim de curso no acionamento MANUAL.
