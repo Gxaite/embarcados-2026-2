@@ -165,3 +165,14 @@ def test_bit_de_erro_vira_excecao_sem_repetir(didatico, porta):
         didatico.pede_int()
     assert erro.value.codigo == 0x01
     assert len(porta.enviados) == 1
+
+
+# ------------------------------------------------------------------- CLI
+def test_cli_encadeia_comandos_com_ponto_e_virgula(simplificado, didatico, porta,
+                                                   capsys):
+    from src import cli_comunicacao as cli
+    contexto = cli.Contexto(simplificado, didatico, elevadores=None)
+    assert cli.executa(contexto, "p1 pede-int ; p2 pede-int") is True
+    assert len(porta.enviados) == 2
+    assert cli.executa(contexto, "p1 pede-int ; sair ; p1 pede-int") is False
+    assert len(porta.enviados) == 3

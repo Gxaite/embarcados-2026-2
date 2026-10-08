@@ -450,6 +450,7 @@ simplificado e `p2` para o MODBUS.
 | `bmp` | lê temperatura e pressão do BMP280 |
 | `auto [on\|off\|log]` | escrita periódica da Condição de Contorno |
 | `chamada <origem> <destino>` | registra chamada (apenas no modo simulado) |
+| `<comando> ; <comando>` | executa vários comandos em sequência na mesma linha |
 
 Todo comando imprime os bytes enviados e recebidos e os campos decodificados:
 
@@ -559,8 +560,10 @@ Sequência da Seção 3.4, item 5, da Entrega 2:
    `predio`, que deve mostrar `watchdog_ambiente = 1` e `barramento_max = 3000`.
    Executar `contorno` e `predio` de novo: watchdog em 0 e barramento conforme
    `12000 − 200 × max(0, T − 25)`. Em seguida, `auto on`.
-2. Porta: com uma cabine nivelada, `porta 1 abrir` e `monitora cabine 1`, que
+2. Porta: com uma cabine nivelada, `porta 1 abrir ; monitora cabine 1`, que
    acompanha `fechada → abrindo → aberta`. Enter interrompe; `porta 1 fechar`.
+   Os dois comandos vão na mesma linha porque a porta abre em poucos segundos:
+   digitado depois, o `monitora` já a encontra fechando.
 3. Fila: registrar uma chamada no quiosque do dashboard, `fila`,
    `atribui <id> <cabine>`, `pop` e `fila` novamente.
 4. Exceções: `escreve 0x11 0 5` (registrador somente leitura) e

@@ -34,6 +34,8 @@ I2C e Condicao de Contorno
   auto [on|off|log]             escrita periodica da Condicao de Contorno (4 s)
 
   chamada <origem> <destino>    (so no modo simulado) registra uma chamada
+  <cmd> ; <cmd>                 varios comandos em sequencia na mesma linha
+                                (ex.: porta 1 abrir ; monitora cabine 1)
   ajuda                         mostra esta lista
   sair                          encerra fechando UART e I2C
 """
@@ -190,7 +192,18 @@ def _contorno(contexto, argumentos):
 
 
 def executa(contexto, linha):
-    """Executa uma linha de comando. Retorna False quando for para encerrar."""
+    """Executa uma linha, que pode ter varios comandos separados por ';'.
+
+    Retorna False quando for para encerrar. Encadear existe para a porta: ela
+    abre em poucos segundos, e digitar o monitora depois perde a transicao.
+    """
+    for comando in linha.split(";"):
+        if not _executa_um(contexto, comando):
+            return False
+    return True
+
+
+def _executa_um(contexto, linha):
     partes = linha.strip().split()
     if not partes:
         return True
