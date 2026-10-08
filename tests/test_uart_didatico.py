@@ -138,6 +138,12 @@ def test_string_sem_eco_do_sub_codigo(didatico, porta):
     assert didatico.pede_string() == "oi"
 
 
+def test_string_com_terminador_nulo_como_na_bancada(didatico, porta):
+    # Bytes capturados na rasp49: o tamanho 0x06 conta o '\0' do fim.
+    porta.perturbacoes = [lambda _r: crc16.anexa_crc(b"\x00\x16\xB3\x06teste\x00")]
+    assert didatico.envia_string("teste") == "teste"
+
+
 def test_crc_invalido_e_repetido(didatico, porta):
     def corrompe(resposta):
         return resposta[:-1] + bytes((resposta[-1] ^ 0xFF,))

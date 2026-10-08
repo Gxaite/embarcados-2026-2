@@ -84,4 +84,5 @@ def decodifica(tipo, dados):
         return struct.unpack("<i", dados)[0]
     if tipo == FLOAT:
         return struct.unpack("<f", dados)[0]
-    return dados[1:].decode("utf-8", errors="replace")
+    # A ESP32 inclui no tamanho o terminador '\0' das strings da Parte 2.
+    return dados[1:].rstrip(b"\x00").decode("utf-8", errors="replace")
