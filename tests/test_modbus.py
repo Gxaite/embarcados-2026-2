@@ -137,6 +137,18 @@ def test_byte_count_errado_e_rejeitado(cliente, porta):
         cliente.le_registradores(0x11, 0, 9)
 
 
+def test_bit_trocado_no_byte_count_e_repetido_como_na_bancada(porta):
+    # rasp49: chegou 11 03 13 ... no lugar de 11 03 12 ...; a segunda tentativa
+    # leu certo. A linha impressa precisa mostrar o quadro inteiro.
+    linhas = []
+    cliente = ClienteModbus(porta, MATRICULA, eco=linhas.append)
+    porta.perturbacoes = [lambda r: r[:2] + bytes((r[2] ^ 1,)) + r[3:]]
+    assert len(cliente.le_registradores(0x11, 0, 9)) == 9
+    assert len(porta.enviados) == 2
+    rx_ruim = next(l for l in linhas if l.startswith("  RX"))
+    assert rx_ruim.startswith("  RX (23 B): 11 03 13")
+
+
 def test_eco_da_escrita_divergente_e_rejeitado(cliente, porta):
     def muda_eco(_resposta):
         return crc16.anexa_crc(bytes.fromhex("11 10 00 04 00 01"))

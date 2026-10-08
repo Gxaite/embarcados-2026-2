@@ -75,7 +75,7 @@ class ClienteModbus:
         self._mostra("[MODBUS 0x03] le %d registrador(es) a partir de %d no "
                      "dispositivo 0x%02X" % (quantidade, registrador, endereco))
         resposta = self._transacao(quadro, endereco, FUNCAO_LE,
-                                   lambda: self._le_resposta_leitura(quantidade))
+                                   lambda cab: self._le_resposta_leitura(quantidade, cab))
         valores = list(struct.unpack(">%dH" % quantidade, resposta[3:-2]))
         self._mostra("  campos: endereco=0x%02X funcao=0x03 byte_count=%d "
                      "valores=%s CRC=%s" % (resposta[0], resposta[2], valores,
@@ -141,7 +141,7 @@ class ClienteModbus:
         if cabecalho[1] == funcao | BIT_DE_EXCECAO:
             resposta = cabecalho + self._le_exato(3, cabecalho)
         elif cabecalho[1] == funcao:
-            resposta = cabecalho + le_resto()
+            resposta = cabecalho + le_resto(cabecalho)
         else:
             # Funcao inesperada: o tamanho do resto e desconhecido. Drenar a
             # linha evita que o lixo seja lido como a proxima resposta.
@@ -160,19 +160,20 @@ class ClienteModbus:
             raise ExcecaoModbus(endereco, funcao, resposta[2])
         return resposta
 
-    def _le_resposta_leitura(self, quantidade):
-        byte_count = self._le_exato(1)
+    def _le_resposta_leitura(self, quantidade, cabecalho):
+        byte_count = self._le_exato(1, cabecalho)
         if byte_count[0] != 2 * quantidade:
             # Valida antes de ler o resto: um byte_count corrompido mandaria
             # esperar uma quantidade de bytes que nunca vai chegar.
             resto = self._porta.le_ate_silencio(SILENCIO_DE_FIM_DE_QUADRO_S)
-            self._mostra_rx(byte_count + resto)
+            self._mostra_rx(cabecalho + byte_count + resto)
             raise RespostaInvalida("byte_count %d, esperado %d"
                                    % (byte_count[0], 2 * quantidade))
-        return byte_count + self._le_exato(byte_count[0] + 2, byte_count)
+        return byte_count + self._le_exato(byte_count[0] + 2,
+                                           cabecalho + byte_count)
 
-    def _le_resposta_escrita(self):
-        return self._le_exato(6)
+    def _le_resposta_escrita(self, cabecalho):
+        return self._le_exato(6, cabecalho)
 
     def _le_exato(self, quantidade, ja_lido=b""):
         dados = self._porta.le(quantidade, self.timeout_s)
