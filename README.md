@@ -1,18 +1,25 @@
-# Elevador Embarcado: Trabalho 1, Entrega 1
+# Elevador Embarcado: Trabalho 1
 
 Fundamentos de Sistemas Embarcados, 2026/2.
 
-Controle da Cabine 1 de um elevador por GPIO em uma Raspberry Pi, contra o
-simulador de edifício executado na ESP32 da bancada. Esta entrega cobre o
-módulo de GPIO e a malha de posição para os andares 0, 1 e 2.
+Controle de um grupo de elevadores em uma Raspberry Pi, contra o simulador de
+edifício executado na ESP32 da bancada.
+
+| Entrega | Conteúdo | Tag | Executável |
+|:--|:--|:-:|:--|
+| 1 | módulo de GPIO e malha de posição da Cabine 1, andares 0 a 2 | `v1.0` | `python3 -m src.main` |
+| 2 | módulos UART-MODBUS (Partes 1, 2 e 3) e I2C com a Condição de Contorno | `v2.0` | `python3 -m src.comunicacao` |
 
 ## Integrantes
 
 Listados no repositório de entrega.
 
-## Vídeo
+## Vídeos
 
-Link a ser adicionado.
+| Entrega | Link |
+|:--|:--|
+| 1 | https://youtu.be/LKAWTPL8WLw |
+| 2 | a ser adicionado |
 
 ## Sumário
 
@@ -23,8 +30,12 @@ Link a ser adicionado.
 5. [Atendimento aos requisitos](#5-atendimento-aos-requisitos)
 6. [Medições em bancada](#6-medições-em-bancada)
 7. [Testes](#7-testes)
+8. [Entrega 2: UART-MODBUS e I2C](#8-entrega-2-uart-modbus-e-i2c)
 
 ## 1. Execução
+
+Esta seção cobre o programa da Entrega 1. O da Entrega 2 está na
+[Seção 8.1](#81-execução).
 
 ### Dependências
 
@@ -122,8 +133,26 @@ src/
 │   ├── cortina.py         eventos de obstrução e liberação
 │   ├── sensor_andar.py    medição da bandeirola pelas duas bordas
 │   └── cabine.py          malha de posição a 50 ms
-├── cli.py                 interface de terminal
-└── main.py                ponto de entrada e tratamento de sinais
+├── uart/                  Entrega 2: UART com a ESP32
+│   ├── porta.py           porta serial por termios e select
+│   ├── crc16.py           CRC-16/ARC (valor inicial zero)
+│   ├── matricula.py       6 dígitos em bytes crus
+│   ├── carga.py           int32, float e string das Partes 1 e 2
+│   ├── simplificado.py    Parte 1, sem endereço e sem CRC
+│   ├── modbus_didatico.py Parte 2, MODBUS com sub-código
+│   ├── modbus.py          Parte 3, funções 0x03 e 0x10
+│   ├── elevadores.py      Parte 3, registradores das cabines e do prédio
+│   └── esp32_simulada.py  ESP32 em software para --simulado e testes
+├── i2c/                   Entrega 2: barramento I2C
+│   ├── barramento.py      acesso ao /dev/i2c-N
+│   ├── bmp280.py          driver e compensação do datasheet
+│   └── bmp280_simulado.py sensor em software
+├── central/
+│   └── condicao_contorno.py  BMP280 -> registradores 5 e 6, a cada 4 s
+├── cli.py                 interface de terminal da Entrega 1
+├── main.py                ponto de entrada da Entrega 1
+├── cli_comunicacao.py     interface de terminal da Entrega 2
+└── comunicacao.py         ponto de entrada da Entrega 2
 
 ferramentas/bringup.py     verificação da placa por etapas
 tests/                     testes unitários e de integração
@@ -359,3 +388,209 @@ tempo real e levam cerca de três minutos.
 
 A verificação da placa, etapa por etapa, está descrita em
 [docs/BANCADA.md](docs/BANCADA.md).
+
+## 8. Entrega 2: UART-MODBUS e I2C
+
+Comunicação com a ESP32 pela UART, nos três protocolos que ela atende ao mesmo
+tempo, e leitura do BMP280 pelo I2C para manter a Condição de Contorno do
+simulador.
+
+### 8.1 Execução
+
+Não há dependência além do Python 3: a porta serial é aberta pelo `termios` e
+o barramento I2C pelo `/dev/i2c-1`, ambos do próprio Linux. Não é preciso
+instalar `pyserial` nem `smbus2` na placa.
+
+A matrícula vai em todos os quadros e não fica no código, porque o repositório
+é público. Ela é lida do argumento `--matricula`, da variável `FSE_MATRICULA`
+ou do arquivo `matricula` na raiz do repositório (ignorado pelo git), nessa
+ordem. Sem nenhum dos três, o programa pergunta. Basta a matrícula completa:
+são usados os 6 últimos dígitos.
+
+```bash
+echo <matricula> > matricula      # uma vez por placa
+python3 -m src.comunicacao
+python3 -m src.comunicacao --contorno-auto   # já mantém o watchdog satisfeito
+python3 -m src.comunicacao --simulado        # sem placa
+```
+
+| Opção | Efeito |
+|:--|:--|
+| `--simulado` | ESP32 e BMP280 em software |
+| `--porta <dispositivo>` | UART, padrão `/dev/serial0` |
+| `--i2c <n>` | barramento I2C, padrão 1 |
+| `--matricula <número>` | matrícula; usa os 6 últimos dígitos |
+| `--timeout <s>` | timeout de cada tentativa, entre 0,2 e 0,5 s (padrão 0,3) |
+| `--contorno-auto` | liga a escrita periódica da Condição de Contorno na partida |
+
+### 8.2 Comandos do terminal
+
+Nas Partes 1 e 2 o protocolo é escolhido antes de cada comando: `p1` para o
+simplificado e `p2` para o MODBUS.
+
+| Comando | Função |
+|:--|:--|
+| `p1 pede-int`, `p2 pede-int` | `0xA1`, solicita inteiro |
+| `p1 pede-float`, `p2 pede-float` | `0xA2`, solicita float |
+| `p1 pede-string`, `p2 pede-string` | `0xA3`, solicita string |
+| `p1 envia-int <n>`, `p2 envia-int <n>` | `0xB1`, envia inteiro |
+| `p1 envia-float <x>`, `p2 envia-float <x>` | `0xB2`, envia float |
+| `p1 envia-string <texto>`, `p2 envia-string <texto>` | `0xB3`, envia string |
+| `p1 cru <byte>...` | envia bytes crus em hexa, para provocar o erro de sintaxe |
+| `cabine <1\|2\|3>` | `le_estado_cabine()` |
+| `porta <1\|2\|3> <abrir\|fechar\|nenhum>` | `comanda_porta()` |
+| `predio` | `le_estado_predio()` |
+| `fila` | `le_chamada_da_fila()` |
+| `atribui <id> <cabine>` | `atribui_chamada()` |
+| `pop` | `remove_chamada_da_fila()` |
+| `contorno [<°C> <hPa>]` | `escreve_condicao_contorno()`; sem argumentos, lê o BMP280 |
+| `le <end> <reg> <qtd>` | função `0x03` em qualquer faixa |
+| `escreve <end> <reg> <valor>...` | função `0x10` em qualquer registrador |
+| `monitora cabine <n>`, `monitora predio` | leitura contínua a cada 1 s, até teclar Enter |
+| `bmp` | lê temperatura e pressão do BMP280 |
+| `auto [on\|off\|log]` | escrita periódica da Condição de Contorno |
+| `chamada <origem> <destino>` | registra chamada (apenas no modo simulado) |
+
+Todo comando imprime os bytes enviados e recebidos e os campos decodificados:
+
+```
+uart> contorno
+BMP280: 27.50 C, 887.00 hPa
+[MODBUS 0x10] escreve [275, 887] a partir do registrador 5 no dispositivo 0x20
+  TX (19 B): 20 10 05 00 02 00 04 13 01 77 03 06 05 04 03 02 01 B7 49
+  RX (8 B): 20 10 00 05 00 02 57 63
+  campos: endereco=0x20 funcao=0x10 reg=5 qtd=2 CRC=57 63
+```
+
+### 8.3 Implementação
+
+**Porta serial.** 115200 bps, 8N1, sem controle de fluxo, em modo cru: sem
+isso o `0x03` e o `0x11`, presentes em quase todo quadro, seriam interpretados
+pelo terminal como Ctrl+C e XON. A espera por bytes é feita com `select()`,
+sem laço ativo. Antes de cada requisição o buffer de recepção é descartado,
+para que a resposta atrasada de uma tentativa anterior não seja lida como a
+resposta atual. Uma trava serializa as transações, porque a CLI e o serviço da
+Condição de Contorno dividem a mesma porta.
+
+**CRC-16.** Polinômio `0xA001` (refletido) com valor inicial **zero**, isto é,
+CRC-16/ARC. O MODBUS RTU padrão começa em `0xFFFF`, e é assim que bibliotecas
+como pymodbus e libmodbus calculam; contra este simulador elas errariam todos
+os quadros. A variante foi determinada a partir dos quatro exemplos da Seção
+3.3 do enunciado, que estão nos testes.
+
+**Parte 1.** Sem CRC não é possível distinguir resposta corrompida de resposta
+correta, então não há retentativa: o timeout é registrado e reportado. É assim
+que o comando desconhecido aparece para a Raspberry Pi, já que o dispositivo
+descarta o pacote sem responder.
+
+**Parte 2.** O enunciado define a requisição byte a byte, mas não o envelope da
+resposta (endereço `0x00` ou `0x01`, sub-código ecoado ou não). A resposta é
+lida até a linha ficar 20 ms em silêncio e interpretada pelo tamanho: o CRC
+valida o quadro inteiro e cada tipo tem tamanho conhecido, então apenas um dos
+formatos possíveis é consistente. Timeout e CRC inválido são repetidos até 3
+vezes; resposta com bit de erro é reportada sem repetir.
+
+**Parte 3.** O tamanho da resposta é determinístico, então ela é lida campo a
+campo: os dois primeiros bytes indicam exceção ou resposta normal, e o
+restante decorre deles. Isso evita esperar silêncio na linha a cada
+transação. Antes de usar a resposta são conferidos CRC, endereço, função,
+`byte_count = 2·qtd` (`0x03`) e o eco de registrador e quantidade (`0x10`).
+
+| Situação | Tratamento |
+|:--|:--|
+| timeout ou resposta incompleta | repete, até 3 tentativas |
+| CRC inválido | descarta e repete |
+| endereço, função ou `byte_count` divergentes | repete |
+| exceção `0x01`, `0x02` ou `0x03` | reporta código e significado, sem repetir |
+
+Ordem dos bytes, conforme a Seção 3.1: `reg`, `qtd` e valores da requisição em
+little-endian; valores da resposta `0x03` e eco da resposta `0x10` em
+big-endian; CRC com o byte baixo primeiro. `posicao_mm` é decodificado como
+`int16` com sinal.
+
+O texto da Seção 3.1 informa 12 bytes para a requisição `0x03` e 13 + 2·qtd
+para a `0x10`, mas os exemplos da Seção 3.3 têm 14 e 15 + 2·qtd. A diferença
+são os 2 dígitos a mais da matrícula; o código segue os exemplos.
+
+**Uso na Entrega Final.** `src/uart/modbus.py` e `src/uart/elevadores.py` não
+dependem da CLI. O Servidor Central importa `Elevadores` e chama os mesmos
+métodos usados aqui.
+
+**BMP280.** Na inicialização o driver confere o chip id (`0x58`), lê os 12
+coeficientes de calibração e configura sobreamostragem x2 na temperatura, x16
+na pressão, filtro IIR 4 e modo normal. A leitura é feita em rajada nos 6
+bytes de dados, para que temperatura e pressão venham da mesma conversão, e
+convertida pelas fórmulas de compensação do datasheet. A temperatura é
+calculada antes da pressão porque a compensação da pressão depende dela.
+
+**Condição de Contorno.** Uma thread lê o BMP280 e escreve temperatura, em
+décimos de grau, e pressão, em hPa, nos registradores 5 e 6 do prédio a cada
+4 s, abaixo do máximo de 5 s exigido e bem dentro do watchdog de 30 s. A
+primeira escrita ocorre na partida. Entre ciclos a thread dorme em
+`Event.wait()`. Uma falha é impressa apenas quando muda, e a recuperação é
+informada; a thread não termina por exceção. O serviço usa um cliente MODBUS
+próprio, sem impressão de bytes, para não encher o terminal a cada 4 s.
+
+**Encerramento.** `SIGINT`, `SIGTERM` e `SIGHUP` param a thread da Condição de
+Contorno e fecham a UART e o I2C.
+
+### 8.4 Atendimento aos requisitos
+
+| Requisito | Implementação |
+|:--|:--|
+| Parte 1, 6 comandos sem CRC | `uart/simplificado.py` |
+| Parte 2, 6 comandos com CRC e matrícula de 6 dígitos | `uart/modbus_didatico.py`, `uart/crc16.py` |
+| Parte 2, bit de erro e código de exceção | `ModbusDidatico.interpreta` |
+| Parte 2, escolha do protocolo antes de cada comando | prefixo `p1` ou `p2` |
+| Parte 3, funções `0x03` e `0x10` | `uart/modbus.py` |
+| Parte 3, validação, timeout e 3 tentativas | `ClienteModbus._transacao` |
+| Parte 3, exceções sem repetição | `ExcecaoModbus` em `uart/erros.py` |
+| Parte 3, uma opção por função e leitura contínua | `cli_comunicacao.py`, `monitora` |
+| Bytes enviados e recebidos em tela | todos os comandos |
+| Funções independentes e utilitários | `envia_pacote`, `le_resposta`, `calcula_crc`, entre outros |
+| Módulo da Parte 3 importável | `uart/modbus.py` e `uart/elevadores.py`, sem dependência da CLI |
+| BMP280 e Condição de Contorno | `i2c/bmp280.py`, `central/condicao_contorno.py` |
+
+### 8.5 Roteiro de demonstração
+
+Sequência da Seção 3.4, item 5, da Entrega 2:
+
+1. Watchdog: iniciar sem `--contorno-auto`, aguardar mais de 30 s e executar
+   `predio`, que deve mostrar `watchdog_ambiente = 1` e `barramento_max = 3000`.
+   Executar `contorno` e `predio` de novo: watchdog em 0 e barramento conforme
+   `12000 − 200 × max(0, T − 25)`. Em seguida, `auto on`.
+2. Porta: com uma cabine nivelada, `porta 1 abrir` e `monitora cabine 1`, que
+   acompanha `fechada → abrindo → aberta`. Enter interrompe; `porta 1 fechar`.
+3. Fila: registrar uma chamada no quiosque do dashboard, `fila`,
+   `atribui <id> <cabine>`, `pop` e `fila` novamente.
+4. Exceções: `escreve 0x11 0 5` (registrador somente leitura) e
+   `le 0x11 0 20` (faixa fora do mapa) devem retornar a exceção `0x02`.
+
+As Partes 1 e 2 são demonstradas pelos 12 comandos `p1` e `p2` da
+[Seção 8.2](#82-comandos-do-terminal). O comando `p1 cru C7 <matrícula>`
+provoca o erro de sintaxe da Seção 1.3, registrado como timeout.
+
+### 8.6 Matrícula no widget
+
+Print do dashboard **uart** com a matrícula em destaque: a ser adicionado após
+a sessão de bancada.
+
+### 8.7 Testes
+
+```bash
+python3 -m pytest tests/test_modbus.py tests/test_uart_didatico.py \
+    tests/test_i2c_e_contorno.py tests/test_porta_serial.py -q
+```
+
+São 60 testes, executados em cerca de um segundo:
+
+| Arquivo | Cobre |
+|:--|:--|
+| `test_modbus.py` | CRC e quadros contra os exemplos da Seção 3.3, ordem dos bytes, retentativas, validação da resposta, exceções e as funções da Parte 3 |
+| `test_uart_didatico.py` | os 12 comandos das Partes 1 e 2, os formatos de resposta aceitos, a matrícula e os erros de tamanho |
+| `test_i2c_e_contorno.py` | compensação do BMP280 contra o exemplo do datasheet, driver e serviço da Condição de Contorno |
+| `test_porta_serial.py` | a `PortaSerial` real contra um pseudo-terminal: modo cru, prazo de leitura e descarte do buffer |
+
+Os testes usam a ESP32 simulada, que segue o enunciado mas não substitui a
+bancada: o formato da resposta da Parte 2 e o comportamento exato do
+simulador só são confirmados na placa.

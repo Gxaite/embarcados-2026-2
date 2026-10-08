@@ -4,5 +4,9 @@
 # onde o modo --simulado nao precisa dela.
 RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
 
+# A Entrega 2 (UART e I2C) nao tem dependencia externa: a porta serial e o
+# barramento I2C sao acessados pelo termios e pelo /dev/i2c-N do proprio
+# Linux, sem pyserial nem smbus2.
+
 # Apenas para a bateria de testes automatizados.
 pytest>=7.0

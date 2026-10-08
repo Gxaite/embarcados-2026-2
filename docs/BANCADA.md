@@ -128,3 +128,53 @@ Se nenhuma entrada reagir ao dashboard com a pinagem nova, repetir a etapa
 | `DEBOUNCE_MS` da cortina | 20 ms | `src/controle/cortina.py` |
 | `DEBOUNCE_MS` do sensor de andar | 2 ms | `src/controle/sensor_andar.py` |
 | `LARGURA_MINIMA_MM` | 60 mm | `src/controle/sensor_andar.py` |
+
+## 9. UART e I2C (Entrega 2)
+
+### Verificação da placa
+
+```bash
+ls -l /dev/serial0            # deve apontar para ttyS0 ou ttyAMA0
+grep -o 'console=serial0[^ ]*' /proc/cmdline   # não deve listar nada
+ls /dev/i2c-1
+i2cdetect -y 1                # o BMP280 aparece em 76
+groups                        # precisa de dialout e i2c
+```
+
+Se o console do kernel estiver na `serial0`, um `getty` disputa os bytes com o
+programa. Sem `raspi-config` não é possível corrigir na sessão: registrar no
+subcanal e trocar de placa.
+
+### Sequência de verificação
+
+Da menor para a maior consequência. Nenhuma etapa move cabine.
+
+```bash
+python3 -m src.comunicacao
+uart> p1 pede-int        # Parte 1: a resposta tem 4 bytes
+uart> p2 pede-int        # Parte 2: confere CRC e formato da resposta
+uart> cabine 1           # Parte 3: 23 bytes de resposta
+uart> bmp                # temperatura plausível para a sala
+uart> contorno           # watchdog_ambiente vai a 0
+uart> predio
+```
+
+O widget **uart** do ThingsBoard mostra cada quadro recebido pela ESP32, com o
+protocolo identificado e a matrícula em destaque. Se a Raspberry Pi registra
+timeout e o widget mostra o quadro, o problema está na resposta; se o widget
+não mostra nada, está no envio.
+
+### Diagnóstico
+
+| Sintoma | Causa provável |
+|:--|:--|
+| Timeout em todos os protocolos | porta errada (`--porta /dev/ttyS0`), console serial ativo ou GND não comum |
+| Timeout só nas Partes 2 e 3 | CRC rejeitado pela ESP32; conferir no widget o quadro recebido |
+| Timeout só na Parte 1 | comando fora da faixa, comportamento esperado da Seção 1.3 |
+| `CrcInvalido` frequente | ruído na linha; as retentativas absorvem casos isolados |
+| `RespostaInvalida` na Parte 2 | formato de resposta não previsto; registrar os bytes do RX para ajuste |
+| Exceção `0x02` em leitura válida | `qtd` ou `reg` fora do mapa; conferir a ordem little-endian |
+| Exceção `0x03` | `porta_comando` fora de 0 a 2 ou `atribuicao_cabine` fora de 1 a 3 |
+| `Permission denied` em `/dev/serial0` ou `/dev/i2c-1` | usuário fora dos grupos `dialout` ou `i2c` |
+| `Remote I/O error` no BMP280 | sensor ausente no endereço `0x76`; conferir `i2cdetect` |
+| `watchdog_ambiente` volta a 1 | escrita automática desligada; `auto on` ou `--contorno-auto` |
