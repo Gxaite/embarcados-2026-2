@@ -149,6 +149,14 @@ def test_bit_trocado_no_byte_count_e_repetido_como_na_bancada(porta):
     assert rx_ruim.startswith("  RX (23 B): 11 03 13")
 
 
+def test_bit_trocado_na_funcao_da_excecao_e_crc_invalido(cliente, porta):
+    # rasp50: chegou 11 92 02 BD C4, com o CRC de 11 90 02.
+    porta.perturbacoes = [lambda r: r[:1] + bytes((r[1] ^ 2,)) + r[2:]]
+    with pytest.raises(ExcecaoModbus):
+        cliente.escreve_registradores(0x11, 0, [5])
+    assert len(porta.enviados) == 2
+
+
 def test_eco_da_escrita_divergente_e_rejeitado(cliente, porta):
     def muda_eco(_resposta):
         return crc16.anexa_crc(bytes.fromhex("11 10 00 04 00 01"))

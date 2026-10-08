@@ -148,6 +148,11 @@ class ClienteModbus:
             resposta = cabecalho + self._porta.le_ate_silencio(
                 SILENCIO_DE_FIM_DE_QUADRO_S)
             self._mostra_rx(resposta)
+            if not crc_valido(resposta):
+                # Na bancada um bit trocado fez 0x90 virar 0x92: e ruido, nao
+                # uma funcao inesperada.
+                raise CrcInvalido("CRC recebido %s nao confere"
+                                  % hexa(resposta[-2:]))
             raise RespostaInvalida("funcao 0x%02X na resposta, esperada 0x%02X"
                                    % (cabecalho[1], funcao))
         self._mostra_rx(resposta)

@@ -198,4 +198,9 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
                      "uart> le 0x11 0 20", "fim do roteiro"):
         assert esperado in saida
     assert saida.count("EXCECAO 0x02") == 2
+    # As consultas internas do roteiro nao imprimem bytes: so os comandos.
+    for secao, primeiro in (("# 1. watchdog", "uart> predio"),
+                            ("# 2. porta", "uart> porta"),
+                            ("# 3. fila", "uart> fila")):
+        assert "TX (" not in saida.split(secao)[1].split(primeiro)[0]
     assert "erro no comando" not in saida

@@ -215,6 +215,19 @@ EXPIRACAO_DO_WATCHDOG_S = 32
 DURACAO_DA_PORTA_S = 10
 
 
+class _Silencio:
+    """Consulta do proprio roteiro, sem imprimir bytes que ninguem digitou."""
+
+    def __init__(self, contexto):
+        self._cliente = contexto.elevadores.cliente
+
+    def __enter__(self):
+        self._eco, self._cliente.eco = self._cliente.eco, None
+
+    def __exit__(self, *_erro):
+        self._cliente.eco = self._eco
+
+
 def _passo(contexto, linha):
     """Executa um comando do roteiro como se tivesse sido digitado."""
     print("\nuart> %s" % linha, flush=True)
@@ -237,7 +250,9 @@ def _roteiro_parte_3(contexto, cabine):
     elevadores = contexto.elevadores
 
     print("\n# 1. watchdog da Condicao de Contorno", flush=True)
-    if elevadores.le_estado_predio()["watchdog_ambiente"] == 0:
+    with _Silencio(contexto):
+        watchdog = elevadores.le_estado_predio()["watchdog_ambiente"]
+    if watchdog == 0:
         if contexto.servico is not None and contexto.servico.ativo:
             contexto.servico.para()
         print("# watchdog ainda valido; aguardando %d s sem escrita para ele "
@@ -251,7 +266,8 @@ def _roteiro_parte_3(contexto, cabine):
         _passo(contexto, "auto on")
 
     print("\n# 2. porta da cabine %d" % cabine, flush=True)
-    estado = elevadores.le_estado_cabine(cabine)
+    with _Silencio(contexto):
+        estado = elevadores.le_estado_cabine(cabine)
     if not estado["nivelado"] or estado["falha"] or estado["porta_estado"]:
         print("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
               "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine,
@@ -264,8 +280,9 @@ def _roteiro_parte_3(contexto, cabine):
 
     print("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)",
           flush=True)
+    with _Silencio(contexto):
+        chamada = elevadores.le_chamada_da_fila()
     _passo(contexto, "fila")
-    chamada = elevadores.le_chamada_da_fila()
     if chamada is None:
         print("# fila vazia: registre uma chamada no quiosque e repita "
               "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine, flush=True)
