@@ -446,11 +446,12 @@ simplificado e `p2` para o MODBUS.
 | `contorno [<°C> <hPa>]` | `escreve_condicao_contorno()`; sem argumentos, lê o BMP280 |
 | `le <end> <reg> <qtd>` | função `0x03` em qualquer faixa |
 | `escreve <end> <reg> <valor>...` | função `0x10` em qualquer registrador |
-| `monitora cabine <n>`, `monitora predio` | leitura contínua a cada 1 s, até teclar Enter |
+| `monitora cabine <n> [<s>]`, `monitora predio [<s>]` | leitura contínua a cada 1 s, até teclar Enter ou por `<s>` segundos |
 | `bmp` | lê temperatura e pressão do BMP280 |
 | `auto [on\|off\|log]` | escrita periódica da Condição de Contorno |
 | `chamada <origem> <destino>` | registra chamada (apenas no modo simulado) |
 | `<comando> ; <comando>` | executa vários comandos em sequência na mesma linha |
+| `roteiro 1`, `roteiro 3 [<cabine>]`, `roteiro tudo [<cabine>]` | executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração) sozinho |
 
 Todo comando imprime os bytes enviados e recebidos e os campos decodificados:
 
@@ -554,7 +555,12 @@ Contorno e fecham a UART e o I2C.
 
 ### 8.5 Roteiro de demonstração
 
-Sequência da Seção 3.4, item 5, da Entrega 2:
+Sequência da Seção 3.4, item 5, da Entrega 2. O comando `roteiro` a executa
+inteira, com 2 s entre os comandos para que cada um apareça no widget: `roteiro 1`
+cobre as Partes 1 e 2, `roteiro 3 <cabine>` a Parte 3 e `roteiro tudo <cabine>`
+as duas. Se o watchdog estiver válido, o roteiro desliga a escrita automática e
+espera 32 s para ele expirar. A chamada da fila precisa ser registrada no
+quiosque antes.
 
 1. Watchdog: iniciar sem `--contorno-auto`, aguardar mais de 30 s e executar
    `predio`, que deve mostrar `watchdog_ambiente = 1` e `barramento_max = 3000`.

@@ -6,6 +6,7 @@ Parte 3 tem um comando por funcao da Secao 3.4. Todos imprimem os bytes
 enviados e recebidos e os campos decodificados.
 """
 import threading
+import time
 
 from .i2c.bmp280 import ErroBMP280
 from .uart import elevadores as mapa
@@ -27,13 +28,19 @@ Parte 3 - simulador (enderecos aceitam 0x11 ou decimal)
   contorno [<graus C> <hPa>]    escreve_condicao_contorno(); sem argumentos, le o BMP280
   le <end> <reg> <qtd>          funcao 0x03 em qualquer faixa (teste de excecao)
   escreve <end> <reg> <v>...    funcao 0x10 em qualquer registrador (teste de excecao)
-  monitora cabine <n> | predio  leitura continua a cada 1 s; Enter interrompe
+  monitora cabine <n> | predio [<s>]   leitura continua a cada 1 s; Enter
+                                interrompe, ou para sozinha apos <s> segundos
 
 I2C e Condicao de Contorno
   bmp                           le temperatura e pressao do BMP280
   auto [on|off|log]             escrita periodica da Condicao de Contorno (4 s)
 
   chamada <origem> <destino>    (so no modo simulado) registra uma chamada
+Demonstracao automatica (pausa de 2 s entre comandos, para o widget)
+  roteiro 1                     os 12 comandos das Partes 1 e 2 e o erro de sintaxe
+  roteiro 3 [<cabine>]          watchdog, porta, fila e excecoes da Parte 3
+  roteiro tudo [<cabine>]       os dois em sequencia (cabine padrao 1)
+
   <cmd> ; <cmd>                 varios comandos em sequencia na mesma linha
                                 (ex.: porta 1 abrir ; monitora cabine 1)
   ajuda                         mostra esta lista
@@ -121,14 +128,18 @@ def _monitora(contexto, argumentos):
     if alvo == "cabine":
         cabine = int(argumentos[1])
         mapa.endereco_da_cabine(cabine)
+        resto = argumentos[2:]
 
         def le():
             imprime_cabine(cabine, contexto.elevadores.le_estado_cabine(cabine))
     elif alvo == "predio":
+        resto = argumentos[1:]
+
         def le():
             imprime_predio(contexto.elevadores.le_estado_predio())
     else:
-        raise ValueError("use: monitora cabine <n> | monitora predio")
+        raise ValueError("use: monitora cabine <n> | monitora predio [<s>]")
+    duracao_s = float(resto[0]) if resto else None
 
     parar = threading.Event()
 
@@ -140,12 +151,19 @@ def _monitora(contexto, argumentos):
                 print("  ERRO: %s" % erro, flush=True)
             parar.wait(PERIODO_DO_MONITOR_S)
 
-    print("leitura continua a cada %.0f s - tecle Enter para parar"
-          % PERIODO_DO_MONITOR_S, flush=True)
+    if duracao_s is None:
+        print("leitura continua a cada %.0f s - tecle Enter para parar"
+              % PERIODO_DO_MONITOR_S, flush=True)
+    else:
+        print("leitura continua a cada %.0f s por %.0f s"
+              % (PERIODO_DO_MONITOR_S, duracao_s), flush=True)
     thread = threading.Thread(target=laco, daemon=True, name="monitor")
     thread.start()
     try:
-        input()
+        if duracao_s is None:
+            input()
+        else:
+            parar.wait(duracao_s)
     except EOFError:
         pass
     finally:
@@ -189,6 +207,94 @@ def _contorno(contexto, argumentos):
     contexto.elevadores.escreve_condicao_contorno(temperatura, pressao)
     print("Condicao de Contorno escrita: %d (decimos de C), %d hPa"
           % (round(temperatura * 10), round(pressao)), flush=True)
+
+
+# ------------------------------------------------------------ roteiro
+PAUSA_DO_ROTEIRO_S = 2.0
+EXPIRACAO_DO_WATCHDOG_S = 32
+DURACAO_DA_PORTA_S = 10
+
+
+def _passo(contexto, linha):
+    """Executa um comando do roteiro como se tivesse sido digitado."""
+    print("\nuart> %s" % linha, flush=True)
+    _executa_um(contexto, linha)
+    time.sleep(PAUSA_DO_ROTEIRO_S)
+
+
+def _roteiro_partes_1_e_2(contexto):
+    matricula = " ".join("%X" % d for d in contexto.protocolos["p1"].matricula)
+    for protocolo in ("p1", "p2"):
+        for comando in ("pede-int", "pede-float", "pede-string", "envia-int 42",
+                        "envia-float 3.14", "envia-string teste"):
+            _passo(contexto, "%s %s" % (protocolo, comando))
+    print("\n# comando 0xC7 fora da faixa: a ESP32 descarta e a RPi registra o "
+          "timeout", flush=True)
+    _passo(contexto, "p1 cru C7 %s" % matricula)
+
+
+def _roteiro_parte_3(contexto, cabine):
+    elevadores = contexto.elevadores
+
+    print("\n# 1. watchdog da Condicao de Contorno", flush=True)
+    if elevadores.le_estado_predio()["watchdog_ambiente"] == 0:
+        if contexto.servico is not None and contexto.servico.ativo:
+            contexto.servico.para()
+        print("# watchdog ainda valido; aguardando %d s sem escrita para ele "
+              "expirar" % EXPIRACAO_DO_WATCHDOG_S, flush=True)
+        time.sleep(EXPIRACAO_DO_WATCHDOG_S)
+    _passo(contexto, "predio")
+    _passo(contexto, "contorno" if contexto.sensor is not None
+           else "contorno 25 1013")
+    _passo(contexto, "predio")
+    if contexto.servico is not None:
+        _passo(contexto, "auto on")
+
+    print("\n# 2. porta da cabine %d" % cabine, flush=True)
+    estado = elevadores.le_estado_cabine(cabine)
+    if not estado["nivelado"] or estado["falha"] or estado["porta_estado"]:
+        print("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
+              "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine,
+              flush=True)
+    print("\nuart> porta %d abrir ; monitora cabine %d %d"
+          % (cabine, cabine, DURACAO_DA_PORTA_S), flush=True)
+    _executa_um(contexto, "porta %d abrir" % cabine)
+    _executa_um(contexto, "monitora cabine %d %d" % (cabine, DURACAO_DA_PORTA_S))
+    _passo(contexto, "porta %d fechar" % cabine)
+
+    print("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)",
+          flush=True)
+    _passo(contexto, "fila")
+    chamada = elevadores.le_chamada_da_fila()
+    if chamada is None:
+        print("# fila vazia: registre uma chamada no quiosque e repita "
+              "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine, flush=True)
+    else:
+        _passo(contexto, "atribui %d %d" % (chamada["id"], cabine))
+        _passo(contexto, "pop")
+        _passo(contexto, "fila")
+
+    print("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa",
+          flush=True)
+    _passo(contexto, "escreve 0x11 0 5")
+    _passo(contexto, "le 0x11 0 20")
+
+
+def _roteiro(contexto, argumentos):
+    parte = argumentos[0].lower() if argumentos else "tudo"
+    cabine = int(argumentos[1]) if len(argumentos) > 1 else 1
+    mapa.endereco_da_cabine(cabine)
+    if parte == "1":
+        _roteiro_partes_1_e_2(contexto)
+    elif parte == "3":
+        _roteiro_parte_3(contexto, cabine)
+    elif parte == "tudo":
+        _roteiro_partes_1_e_2(contexto)
+        _roteiro_parte_3(contexto, cabine)
+    else:
+        raise ValueError("use: roteiro 1 | roteiro 3 [<cabine>] | "
+                         "roteiro tudo [<cabine>]")
+    print("\n# fim do roteiro", flush=True)
 
 
 def executa(contexto, linha):
@@ -255,6 +361,8 @@ def _executa_um(contexto, linha):
                 [int(v, 0) for v in argumentos[2:]] or [0])
         elif comando == "monitora":
             _monitora(contexto, argumentos)
+        elif comando == "roteiro":
+            _roteiro(contexto, argumentos)
         elif comando == "bmp":
             if contexto.sensor is None:
                 print("BMP280 indisponivel", flush=True)

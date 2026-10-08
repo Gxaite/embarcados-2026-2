@@ -25,6 +25,10 @@ class ProtocoloSimplificado:
         self._eco = eco or (lambda _texto: None)
         self.timeout_s = timeout_s
 
+    @property
+    def matricula(self):
+        return self._matricula
+
     # --------------------------------------------- um metodo por comando
     def pede_int(self):
         return self._transacao(carga.PEDE_INT)

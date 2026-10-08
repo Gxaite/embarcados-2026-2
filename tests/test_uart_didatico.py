@@ -176,3 +176,26 @@ def test_cli_encadeia_comandos_com_ponto_e_virgula(simplificado, didatico, porta
     assert len(porta.enviados) == 2
     assert cli.executa(contexto, "p1 pede-int ; sair ; p1 pede-int") is False
     assert len(porta.enviados) == 3
+
+
+def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
+    from src import cli_comunicacao as cli
+    from src.uart import modbus
+    from src.uart.elevadores import Elevadores
+    monkeypatch.setattr(cli, "PAUSA_DO_ROTEIRO_S", 0)
+    monkeypatch.setattr(cli, "EXPIRACAO_DO_WATCHDOG_S", 0)
+    monkeypatch.setattr(cli, "DURACAO_DA_PORTA_S", 0.05)
+    eco = lambda texto: print(texto)
+    porta.dispositivo.registra_chamada(0, 3)
+    contexto = cli.Contexto(
+        ProtocoloSimplificado(porta, MATRICULA, eco=eco),
+        ModbusDidatico(porta, MATRICULA, eco=eco),
+        Elevadores(modbus.ClienteModbus(porta, MATRICULA, eco=eco)))
+    assert cli.executa(contexto, "roteiro tudo 2") is True
+    saida = capsys.readouterr().out
+    for esperado in ("uart> p2 envia-string teste", "uart> p1 cru C7 6 5 4 3 2 1",
+                     "uart> contorno 25 1013", "uart> atribui 1 2", "uart> pop",
+                     "uart> le 0x11 0 20", "fim do roteiro"):
+        assert esperado in saida
+    assert saida.count("EXCECAO 0x02") == 2
+    assert "erro no comando" not in saida
