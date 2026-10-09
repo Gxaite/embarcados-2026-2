@@ -54,6 +54,7 @@ class ProtocoloSimplificado:
         Serve para provocar o erro de sintaxe da Secao 1.3 (comando fora da
         faixa) e conferir que a Raspberry detecta o timeout.
         """
+        self._eco("[%s] pacote cru (%d B)" % (self.NOME, len(dados)))
         with self._porta.trava:
             self._porta.descarta_entrada()
             self.envia_pacote(bytes(dados))
@@ -104,6 +105,6 @@ class ProtocoloSimplificado:
         except RespostaInvalida as erro:
             self._eco("  ERRO: %s" % erro)
             raise
-        self._eco("  campos: comando=0x%02X matricula=%s | %s = %r"
-                  % (comando, hexa(self._matricula), tipo, valor))
+        self._eco("  campos: comando=0x%02X matricula=%s | %s = %s"
+                  % (comando, hexa(self._matricula), tipo, carga.formata(valor)))
         return valor

@@ -10,41 +10,41 @@ import time
 
 from .i2c.bmp280 import ErroBMP280
 from .uart import elevadores as mapa
-from .uart.erros import ErroComunicacao
+from .tela import exibe
+from .uart.erros import ErroComunicacao, ExcecaoModbus
 
 AJUDA = """
-Partes 1 e 2 - dispositivo didatico. <p> = p1 (simplificado) ou p2 (MODBUS)
+## Partes 1 e 2 - dispositivo didatico 0x01   (<p> = p1 simplificado | p2 MODBUS)
   <p> pede-int | pede-float | pede-string
   <p> envia-int <n> | envia-float <x> | envia-string <texto>
-  p1 cru <byte> [<byte>...]     envia bytes crus em hexa (ex.: p1 cru C7 0 1 5 1 1 2)
+  p1 cru <byte>...              bytes crus em hexa (ex.: p1 cru C7 0 1 5 1 1 2)
 
-Parte 3 - simulador (enderecos aceitam 0x11 ou decimal)
+## Parte 3 - cabines 0x11-0x13 e predio 0x20
   cabine <1|2|3>                le_estado_cabine()
-  porta <1|2|3> <abrir|fechar|nenhum|codigo>     comanda_porta()
+  porta <1|2|3> abrir|fechar    comanda_porta()
   predio                        le_estado_predio()
   fila                          le_chamada_da_fila()
   atribui <id> <cabine>         atribui_chamada()
   pop                           remove_chamada_da_fila()
-  contorno [<graus C> <hPa>]    escreve_condicao_contorno(); sem argumentos, le o BMP280
-  le <end> <reg> <qtd>          funcao 0x03 em qualquer faixa (teste de excecao)
-  escreve <end> <reg> <v>...    funcao 0x10 em qualquer registrador (teste de excecao)
-  monitora cabine <n> | predio [<s>]   leitura continua a cada 1 s; Enter
-                                interrompe, ou para sozinha apos <s> segundos
+  contorno [<graus C> <hPa>]    escreve_condicao_contorno() (sem argumento: BMP280)
+  le <end> <reg> <qtd>          funcao 0x03 crua (teste de excecao)
+  escreve <end> <reg> <v>...    funcao 0x10 crua (teste de excecao)
+  monitora cabine <n> [<s>]     leitura continua a cada 1 s (Enter para,
+  monitora predio [<s>]         ou para sozinha apos <s> segundos)
 
-I2C e Condicao de Contorno
+## I2C e Condicao de Contorno
   bmp                           le temperatura e pressao do BMP280
   auto [on|off|log]             escrita periodica da Condicao de Contorno (4 s)
 
-  chamada <origem> <destino>    (so no modo simulado) registra uma chamada
-Demonstracao automatica (pausa de 2 s entre comandos, para o widget)
+## Demonstracao (2 s entre comandos, para o widget acompanhar)
   roteiro 1                     os 12 comandos das Partes 1 e 2 e o erro de sintaxe
   roteiro 3 [<cabine>]          watchdog, porta, fila e excecoes da Parte 3
-  roteiro tudo [<cabine>]       os dois em sequencia (cabine padrao 1)
+  roteiro tudo [<cabine>]       as duas em sequencia
 
-  <cmd> ; <cmd>                 varios comandos em sequencia na mesma linha
-                                (ex.: porta 1 abrir ; monitora cabine 1)
-  ajuda                         mostra esta lista
-  sair                          encerra fechando UART e I2C
+## Terminal
+  <cmd> ; <cmd>                 varios comandos na mesma linha
+  chamada <origem> <destino>    registra chamada (so no modo --simulado)
+  ajuda | sair
 """
 
 PERIODO_DO_MONITOR_S = 1.0
@@ -64,22 +64,21 @@ class Contexto:
 
 # ----------------------------------------------------------- impressao
 def imprime_cabine(cabine, estado):
-    print("  Cabine %s: andar %d | %s | porta %s (comando %d) | %d mA | %d kg | "
-          "%d passageiro(s) | posicao %d mm | falha 0x%04X"
+    exibe("  => Cabine %s | andar %d %s | porta %-9s (cmd %d) | %4d mA | %3d kg, "
+          "%d pass. | %5d mm | falha 0x%04X"
           % (cabine, estado["andar_atual"],
-             "nivelada" if estado["nivelado"] else "entre andares",
+             "nivelada" if estado["nivelado"] else "em transito",
              mapa.ESTADOS_DA_PORTA.get(estado["porta_estado"],
                                        "?%d" % estado["porta_estado"]),
              estado["porta_comando"], estado["corrente_ma"], estado["carga_kg"],
-             estado["passageiros"], estado["posicao_mm"], estado["falha"]),
-          flush=True)
+             estado["passageiros"], estado["posicao_mm"], estado["falha"]))
 
 
 def imprime_predio(estado):
     temperatura = estado["ambiente_temp_c_x10"]
     temperatura = (temperatura - 0x10000 if temperatura & 0x8000
                    else temperatura) / 10.0
-    print("""  Predio (0x20):
+    exibe("""  => Predio (0x20):
     fila ............... %d chamada(s); cabeca: id %d, %d -> %d
     ambiente ........... %.1f C, %d hPa
     barramento_max ..... %d mA
@@ -96,7 +95,7 @@ def imprime_predio(estado):
         mapa.CENARIOS.get(estado["cenario_ativo"], "?"),
         estado["cenario_geradas"], estado["cenario_atendidas"],
         estado["espera_media_s_x10"] / 10.0,
-        estado["viagem_media_s_x10"] / 10.0), flush=True)
+        estado["viagem_media_s_x10"] / 10.0))
 
 
 # ------------------------------------------------------------ comandos
@@ -148,15 +147,15 @@ def _monitora(contexto, argumentos):
             try:
                 le()
             except ErroComunicacao as erro:
-                print("  ERRO: %s" % erro, flush=True)
+                exibe("  ERRO: %s" % erro)
             parar.wait(PERIODO_DO_MONITOR_S)
 
     if duracao_s is None:
-        print("leitura continua a cada %.0f s - tecle Enter para parar"
-              % PERIODO_DO_MONITOR_S, flush=True)
+        exibe("leitura continua a cada %.0f s - tecle Enter para parar"
+              % PERIODO_DO_MONITOR_S)
     else:
-        print("leitura continua a cada %.0f s por %.0f s"
-              % (PERIODO_DO_MONITOR_S, duracao_s), flush=True)
+        exibe("leitura continua a cada %.0f s por %.0f s"
+              % (PERIODO_DO_MONITOR_S, duracao_s))
     thread = threading.Thread(target=laco, daemon=True, name="monitor")
     thread.start()
     try:
@@ -169,13 +168,13 @@ def _monitora(contexto, argumentos):
     finally:
         parar.set()
         thread.join(timeout=2.0)
-    print("leitura continua encerrada", flush=True)
+    exibe("leitura continua encerrada")
 
 
 def _auto(contexto, argumentos):
     servico = contexto.servico
     if servico is None:
-        print("servico indisponivel: o BMP280 nao foi aberto", flush=True)
+        exibe("servico indisponivel: o BMP280 nao foi aberto")
         return
     acao = argumentos[0].lower() if argumentos else "status"
     if acao == "on":
@@ -184,15 +183,15 @@ def _auto(contexto, argumentos):
         servico.para()
     elif acao == "log":
         servico.verboso = not servico.verboso
-        print("log de cada escrita: %s" % ("ligado" if servico.verboso
-                                           else "desligado"), flush=True)
+        exibe("log de cada escrita: %s" % ("ligado" if servico.verboso
+                                           else "desligado"))
     leitura = servico.ultima_leitura
-    print("Condicao de Contorno automatica: %s | periodo %.0f s | %d escrita(s), "
+    exibe("  => Condicao de Contorno automatica: %s | periodo %.0f s | %d escrita(s), "
           "%d falha(s)%s" % (
               "LIGADA" if servico.ativo else "desligada", servico.periodo_s,
               servico.escritas, servico.falhas,
               "" if leitura is None else " | ultima: %.2f C, %.2f hPa"
-              % (leitura.temperatura_c, leitura.pressao_hpa)), flush=True)
+              % (leitura.temperatura_c, leitura.pressao_hpa)))
 
 
 def _contorno(contexto, argumentos):
@@ -203,10 +202,11 @@ def _contorno(contexto, argumentos):
             raise ValueError("BMP280 indisponivel; informe <graus C> <hPa>")
         leitura = contexto.sensor.le()
         temperatura, pressao = leitura.temperatura_c, leitura.pressao_hpa
-        print("BMP280: %.2f C, %.2f hPa" % (temperatura, pressao), flush=True)
+        exibe("[I2C] BMP280 0x%02X: %.2f C, %.2f hPa"
+              % (contexto.sensor.endereco, temperatura, pressao))
     contexto.elevadores.escreve_condicao_contorno(temperatura, pressao)
-    print("Condicao de Contorno escrita: %d (decimos de C), %d hPa"
-          % (round(temperatura * 10), round(pressao)), flush=True)
+    exibe("  => Condicao de Contorno escrita: %d (decimos de C), %d hPa"
+          % (round(temperatura * 10), round(pressao)))
 
 
 # ------------------------------------------------------------ roteiro
@@ -230,7 +230,7 @@ class _Silencio:
 
 def _passo(contexto, linha):
     """Executa um comando do roteiro como se tivesse sido digitado."""
-    print("\nuart> %s" % linha, flush=True)
+    exibe("\nuart> %s" % linha)
     _executa_um(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
@@ -241,22 +241,22 @@ def _roteiro_partes_1_e_2(contexto):
         for comando in ("pede-int", "pede-float", "pede-string", "envia-int 42",
                         "envia-float 3.14", "envia-string teste"):
             _passo(contexto, "%s %s" % (protocolo, comando))
-    print("\n# comando 0xC7 fora da faixa: a ESP32 descarta e a RPi registra o "
-          "timeout", flush=True)
+    exibe("\n# comando 0xC7 fora da faixa: a ESP32 descarta e a RPi registra o "
+          "timeout")
     _passo(contexto, "p1 cru C7 %s" % matricula)
 
 
 def _roteiro_parte_3(contexto, cabine):
     elevadores = contexto.elevadores
 
-    print("\n# 1. watchdog da Condicao de Contorno", flush=True)
+    exibe("\n# 1. watchdog da Condicao de Contorno")
     with _Silencio(contexto):
         watchdog = elevadores.le_estado_predio()["watchdog_ambiente"]
     if watchdog == 0:
         if contexto.servico is not None and contexto.servico.ativo:
             contexto.servico.para()
-        print("# watchdog ainda valido; aguardando %d s sem escrita para ele "
-              "expirar" % EXPIRACAO_DO_WATCHDOG_S, flush=True)
+        exibe("# watchdog ainda valido; aguardando %d s sem escrita para ele "
+              "expirar" % EXPIRACAO_DO_WATCHDOG_S)
         time.sleep(EXPIRACAO_DO_WATCHDOG_S)
     _passo(contexto, "predio")
     _passo(contexto, "contorno" if contexto.sensor is not None
@@ -265,34 +265,31 @@ def _roteiro_parte_3(contexto, cabine):
     if contexto.servico is not None:
         _passo(contexto, "auto on")
 
-    print("\n# 2. porta da cabine %d" % cabine, flush=True)
+    exibe("\n# 2. porta da cabine %d" % cabine)
     with _Silencio(contexto):
         estado = elevadores.le_estado_cabine(cabine)
     if not estado["nivelado"] or estado["falha"] or estado["porta_estado"]:
-        print("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
-              "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine,
-              flush=True)
-    print("\nuart> porta %d abrir ; monitora cabine %d %d"
-          % (cabine, cabine, DURACAO_DA_PORTA_S), flush=True)
+        exibe("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
+              "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine)
+    exibe("\nuart> porta %d abrir ; monitora cabine %d %d"
+          % (cabine, cabine, DURACAO_DA_PORTA_S))
     _executa_um(contexto, "porta %d abrir" % cabine)
     _executa_um(contexto, "monitora cabine %d %d" % (cabine, DURACAO_DA_PORTA_S))
     _passo(contexto, "porta %d fechar" % cabine)
 
-    print("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)",
-          flush=True)
+    exibe("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)")
     with _Silencio(contexto):
         chamada = elevadores.le_chamada_da_fila()
     _passo(contexto, "fila")
     if chamada is None:
-        print("# fila vazia: registre uma chamada no quiosque e repita "
-              "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine, flush=True)
+        exibe("# fila vazia: registre uma chamada no quiosque e repita "
+              "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine)
     else:
         _passo(contexto, "atribui %d %d" % (chamada["id"], cabine))
         _passo(contexto, "pop")
         _passo(contexto, "fila")
 
-    print("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa",
-          flush=True)
+    exibe("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa")
     _passo(contexto, "escreve 0x11 0 5")
     _passo(contexto, "le 0x11 0 20")
 
@@ -311,7 +308,7 @@ def _roteiro(contexto, argumentos):
     else:
         raise ValueError("use: roteiro 1 | roteiro 3 [<cabine>] | "
                          "roteiro tudo [<cabine>]")
-    print("\n# fim do roteiro", flush=True)
+    exibe("\n# fim do roteiro")
 
 
 def executa(contexto, linha):
@@ -337,7 +334,7 @@ def _executa_um(contexto, linha):
         if comando in ("sair", "exit", "quit"):
             return False
         elif comando in ("ajuda", "help", "?"):
-            print(AJUDA, flush=True)
+            exibe(AJUDA)
         elif comando in contexto.protocolos:
             _protocolo(contexto, comando, argumentos)
         elif comando == "cabine":
@@ -348,25 +345,23 @@ def _executa_um(contexto, linha):
             elevadores.comanda_porta(
                 int(argumentos[0]),
                 acao if acao in mapa.COMANDOS_DA_PORTA else int(acao))
-            print("porta da cabine %s: comando %s enviado" % (argumentos[0], acao),
-                  flush=True)
+            exibe("  => porta da cabine %s: comando %s enviado" % (argumentos[0], acao))
         elif comando == "predio":
             imprime_predio(elevadores.le_estado_predio())
         elif comando == "fila":
             chamada = elevadores.le_chamada_da_fila()
             if chamada is None:
-                print("  fila vazia", flush=True)
+                exibe("  => fila vazia")
             else:
-                print("  %d na fila; cabeca: chamada %d, andar %d -> %d"
+                exibe("  => %d na fila; cabeca: chamada %d, andar %d -> %d"
                       % (chamada["na_fila"], chamada["id"], chamada["origem"],
-                         chamada["destino"]), flush=True)
+                         chamada["destino"]))
         elif comando == "atribui":
             elevadores.atribui_chamada(int(argumentos[0]), int(argumentos[1]))
-            print("chamada %s atribuida a cabine %s" % tuple(argumentos[:2]),
-                  flush=True)
+            exibe("  => chamada %s atribuida a cabine %s" % tuple(argumentos[:2]))
         elif comando == "pop":
             elevadores.remove_chamada_da_fila()
-            print("chamada da cabeca removida da fila", flush=True)
+            exibe("  => chamada da cabeca removida da fila")
         elif comando == "contorno":
             _contorno(contexto, argumentos)
         elif comando == "le":
@@ -382,31 +377,33 @@ def _executa_um(contexto, linha):
             _roteiro(contexto, argumentos)
         elif comando == "bmp":
             if contexto.sensor is None:
-                print("BMP280 indisponivel", flush=True)
+                exibe("BMP280 indisponivel")
             else:
                 leitura = contexto.sensor.le()
-                print("  BMP280 (0x%02X): %.2f C, %.2f hPa"
+                exibe("[I2C] BMP280 0x%02X: %.2f C, %.2f hPa"
                       % (contexto.sensor.endereco, leitura.temperatura_c,
-                         leitura.pressao_hpa), flush=True)
+                         leitura.pressao_hpa))
         elif comando == "auto":
             _auto(contexto, argumentos)
         elif comando == "chamada":
             if contexto.esp32_simulada is None:
-                print("so no modo simulado. Na bancada, registre a chamada no "
-                      "quiosque do dashboard.", flush=True)
+                exibe("so no modo simulado. Na bancada, registre a chamada no "
+                      "quiosque do dashboard.")
             else:
                 contexto.esp32_simulada.registra_chamada(int(argumentos[0]),
                                                          int(argumentos[1]))
-                print("chamada registrada no simulador", flush=True)
+                exibe("chamada registrada no simulador")
         else:
-            print("comando desconhecido: %s (digite 'ajuda')" % comando, flush=True)
+            exibe("comando desconhecido: %s (digite 'ajuda')" % comando)
 
+    except ExcecaoModbus:
+        pass  # o protocolo ja imprimiu o codigo e o significado
     except ErroComunicacao as erro:
-        print("  ERRO: %s: %s" % (type(erro).__name__, erro), flush=True)
+        exibe("  ERRO: %s: %s" % (type(erro).__name__, erro))
     except (OSError, ErroBMP280) as erro:
-        print("  ERRO de E/S: %s" % erro, flush=True)
+        exibe("  ERRO de E/S: %s" % erro)
     except (IndexError, ValueError) as erro:
-        print("erro no comando: %s" % (erro or "faltam argumentos"), flush=True)
+        exibe("erro no comando: %s" % (erro or "faltam argumentos"))
 
     return True
 

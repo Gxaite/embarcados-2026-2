@@ -86,3 +86,11 @@ def decodifica(tipo, dados):
         return struct.unpack("<f", dados)[0]
     # A ESP32 inclui no tamanho o terminador '\0' das strings da Parte 2.
     return dados[1:].rstrip(b"\x00").decode("utf-8", errors="replace")
+
+
+def formata(valor):
+    """Valor decodificado para a tela. O float32 vira o decimal mais curto que
+    ele representa (3.14, e nao 3.140000104904175)."""
+    if isinstance(valor, float):
+        return "%.7g" % valor
+    return repr(valor)

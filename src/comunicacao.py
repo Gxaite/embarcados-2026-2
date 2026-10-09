@@ -14,6 +14,7 @@ import signal
 import sys
 
 from . import cli_comunicacao as cli
+from . import tela
 from .central.condicao_contorno import PERIODO_PADRAO_S, ServicoCondicaoContorno
 from .i2c import bmp280
 from .uart import matricula as mat
@@ -24,8 +25,28 @@ from .uart.porta import PORTA_PADRAO
 from .uart.simplificado import ProtocoloSimplificado
 
 
-def _imprime(texto):
-    print(texto, flush=True)
+_imprime = tela.exibe
+
+
+def banner(matricula, simulado, porta, timeout_s, sensor, contorno_auto):
+    linhas = (
+        ("matricula", mat.como_texto(matricula)),
+        ("UART", "ESP32 simulada" if simulado else "%s, 115200 8N1" % porta),
+        ("timeout", "%d ms, ate 3 tentativas" % round(timeout_s * 1000)),
+        ("BMP280", "0x%02X" % sensor.endereco if sensor else "indisponivel"),
+        ("contorno", "automatico a cada 4 s" if contorno_auto
+         else "manual ('auto on' liga)"),
+    )
+    largura = 52
+    print(tela.cor("+" + "-" * largura + "+", tela.FRACO))
+    print(tela.cor("|" + " FSE 2026/2 - Entrega 2: UART-MODBUS e I2C"
+                   .ljust(largura) + "|", tela.NEGRITO))
+    print(tela.cor("+" + "-" * largura + "+", tela.FRACO))
+    for rotulo, valor in linhas:
+        texto = ("  %-10s %s" % (rotulo, valor)).ljust(largura)
+        print(tela.cor("|", tela.FRACO) + texto + tela.cor("|", tela.FRACO))
+    print(tela.cor("+" + "-" * largura + "+", tela.FRACO))
+    print("digite 'ajuda' para a lista de comandos\n", flush=True)
 
 
 def obtem_matricula(argumento):
@@ -88,14 +109,22 @@ def main(argv=None):
                         help="timeout de cada tentativa, em s (0,2 a 0,5)")
     parser.add_argument("--contorno-auto", action="store_true",
                         help="liga a escrita periodica da Condicao de Contorno")
+    parser.add_argument("--sem-cor", action="store_true",
+                        help="terminal sem cores")
     args = parser.parse_args(argv)
+    if args.sem_cor:
+        tela.desliga()
+    try:
+        import readline  # noqa: F401 - historico com as setas no input()
+    except ImportError:
+        pass
     if not 0.2 <= args.timeout <= 0.5:
         parser.error("o enunciado pede timeout entre 0,2 e 0,5 s")
 
     matricula = obtem_matricula(args.matricula)
     porta, esp32 = abre_porta(args.simulado, args.porta)
     if args.simulado:
-        print("### modo SIMULADO: ESP32 e BMP280 em software ###", flush=True)
+        _imprime("AVISO: modo SIMULADO, ESP32 e BMP280 em software")
     sensor, barramento = abre_sensor(args.simulado, args.i2c)
 
     elevadores = Elevadores(modbus.ClienteModbus(
@@ -136,21 +165,20 @@ def main(argv=None):
     for sinal in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sinal, encerra)
 
-    print("matricula em uso: %s | UART %s | timeout %d ms | BMP280 %s"
-          % (mat.como_texto(matricula), "simulada" if args.simulado else args.porta,
-             round(args.timeout * 1000), "ok" if sensor else "indisponivel"),
-          flush=True)
+    banner(matricula, args.simulado, args.porta, args.timeout, sensor,
+           args.contorno_auto and servico is not None)
     if args.contorno_auto and servico is not None:
         servico.inicia()
-    print(cli.AJUDA, flush=True)
     try:
         while True:
             try:
-                linha = input("uart> ")
+                linha = input(tela.prompt("uart> "))
             except EOFError:
                 break
             if not cli.executa(contexto, linha):
                 break
+            if linha.strip():
+                print(flush=True)
     finally:
         finaliza()
     return 0

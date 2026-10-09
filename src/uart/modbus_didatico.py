@@ -99,9 +99,9 @@ class ModbusDidatico:
                 valor = carga.decodifica(tipo, dados)
             except RespostaInvalida:
                 continue
-            campos = ("endereco=0x%02X funcao=0x%02X %s| %s = %r | CRC=%s"
-                      % (endereco, funcao_recebida, formato, tipo, valor,
-                         hexa(resposta[-2:])))
+            campos = ("endereco=0x%02X funcao=0x%02X %s| %s = %s | CRC=%s"
+                      % (endereco, funcao_recebida, formato, tipo,
+                         carga.formata(valor), hexa(resposta[-2:])))
             return valor, campos
         raise RespostaInvalida("carga de %d bytes nao corresponde a um %s"
                                % (len(miolo), tipo))

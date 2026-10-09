@@ -152,6 +152,7 @@ src/
 ├── cli.py                 interface de terminal da Entrega 1
 ├── main.py                ponto de entrada da Entrega 1
 ├── cli_comunicacao.py     interface de terminal da Entrega 2
+├── tela.py                cores do terminal da Entrega 2
 └── comunicacao.py         ponto de entrada da Entrega 2
 
 ferramentas/bringup.py     verificação da placa por etapas
@@ -422,6 +423,7 @@ python3 -m src.comunicacao --simulado        # sem placa
 | `--matricula <número>` | matrícula; usa os 6 últimos dígitos |
 | `--timeout <s>` | timeout de cada tentativa, entre 0,2 e 0,5 s (padrão 0,3) |
 | `--contorno-auto` | liga a escrita periódica da Condição de Contorno na partida |
+| `--sem-cor` | terminal sem cores (também desligadas com `NO_COLOR` ou saída redirecionada) |
 
 ### 8.2 Comandos do terminal
 
@@ -453,15 +455,18 @@ simplificado e `p2` para o MODBUS.
 | `<comando> ; <comando>` | executa vários comandos em sequência na mesma linha |
 | `roteiro 1`, `roteiro 3 [<cabine>]`, `roteiro tudo [<cabine>]` | executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração) sozinho |
 
-Todo comando imprime os bytes enviados e recebidos e os campos decodificados:
+Todo comando imprime um cabeçalho, os bytes enviados (`TX`) e recebidos
+(`RX`), os campos decodificados e, na linha `=>`, o resultado. No terminal,
+`TX`, `RX`, exceções e timeouts saem em cores diferentes:
 
 ```
 uart> contorno
-BMP280: 27.50 C, 887.00 hPa
+[I2C] BMP280 0x76: 27.50 C, 887.00 hPa
 [MODBUS 0x10] escreve [275, 887] a partir do registrador 5 no dispositivo 0x20
   TX (19 B): 20 10 05 00 02 00 04 13 01 77 03 06 05 04 03 02 01 B7 49
   RX (8 B): 20 10 00 05 00 02 57 63
   campos: endereco=0x20 funcao=0x10 reg=5 qtd=2 CRC=57 63
+  => Condicao de Contorno escrita: 275 (decimos de C), 887 hPa
 ```
 
 ### 8.3 Implementação
