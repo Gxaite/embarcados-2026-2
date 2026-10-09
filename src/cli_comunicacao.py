@@ -98,6 +98,15 @@ def imprime_predio(estado):
         estado["viagem_media_s_x10"] / 10.0))
 
 
+def imprime_fila(chamada):
+    if chamada is None:
+        exibe("  => fila vazia")
+    else:
+        exibe("  => %d na fila; cabeca: chamada %d, andar %d -> %d"
+              % (chamada["na_fila"], chamada["id"], chamada["origem"],
+                 chamada["destino"]))
+
+
 # ------------------------------------------------------------ comandos
 def _protocolo(contexto, nome, argumentos):
     protocolo = contexto.protocolos[nome]
@@ -210,22 +219,16 @@ def _contorno(contexto, argumentos):
 
 
 # ------------------------------------------------------------ roteiro
-PAUSA_DO_ROTEIRO_S = 2.0
+# O widget do dashboard deixou de receber eventos na rasp50 apos uns 30 em
+# 40 s, entao o roteiro evita trafego que ninguem ve: toda consulta dele e um
+# comando impresso, e a escrita automatica (2 eventos a cada 4 s) so liga no
+# final.
+PAUSA_DO_ROTEIRO_S = 3.0
 EXPIRACAO_DO_WATCHDOG_S = 32
-DURACAO_DA_PORTA_S = 10
-
-
-class _Silencio:
-    """Consulta do proprio roteiro, sem imprimir bytes que ninguem digitou."""
-
-    def __init__(self, contexto):
-        self._cliente = contexto.elevadores.cliente
-
-    def __enter__(self):
-        self._eco, self._cliente.eco = self._cliente.eco, None
-
-    def __exit__(self, *_erro):
-        self._cliente.eco = self._eco
+# A porta do simulador leva ~2 s abrindo, fica ~3 s aberta e fecha sozinha.
+# O fechar vai enquanto ela esta aberta, para o comando aparecer fazendo efeito.
+DURACAO_DA_ABERTURA_S = 3
+DURACAO_DO_FECHAMENTO_S = 5
 
 
 def _passo(contexto, linha):
@@ -233,6 +236,22 @@ def _passo(contexto, linha):
     exibe("\nuart> %s" % linha)
     _executa_um(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
+
+
+def _consulta(linha, le, imprime):
+    """Passo do roteiro cujo resultado decide o proximo. Impresso igual ao
+    comando digitado; devolve None se a leitura falhar."""
+    exibe("\nuart> %s" % linha)
+    try:
+        estado = le()
+    except ErroComunicacao as erro:
+        if not isinstance(erro, ExcecaoModbus):
+            exibe("  ERRO: %s: %s" % (type(erro).__name__, erro))
+        estado = None
+    else:
+        imprime(estado)
+    time.sleep(PAUSA_DO_ROTEIRO_S)
+    return estado
 
 
 def _roteiro_partes_1_e_2(contexto):
@@ -248,39 +267,39 @@ def _roteiro_partes_1_e_2(contexto):
 
 def _roteiro_parte_3(contexto, cabine):
     elevadores = contexto.elevadores
+    servico = contexto.servico
 
     exibe("\n# 1. watchdog da Condicao de Contorno")
-    with _Silencio(contexto):
-        watchdog = elevadores.le_estado_predio()["watchdog_ambiente"]
-    if watchdog == 0:
-        if contexto.servico is not None and contexto.servico.ativo:
-            contexto.servico.para()
+    if servico is not None and servico.ativo:
+        servico.para()
+    predio = _consulta("predio", elevadores.le_estado_predio, imprime_predio)
+    if predio is not None and predio["watchdog_ambiente"] == 0:
         exibe("# watchdog ainda valido; aguardando %d s sem escrita para ele "
               "expirar" % EXPIRACAO_DO_WATCHDOG_S)
         time.sleep(EXPIRACAO_DO_WATCHDOG_S)
-    _passo(contexto, "predio")
+        _passo(contexto, "predio")
     _passo(contexto, "contorno" if contexto.sensor is not None
            else "contorno 25 1013")
     _passo(contexto, "predio")
-    if contexto.servico is not None:
-        _passo(contexto, "auto on")
 
     exibe("\n# 2. porta da cabine %d" % cabine)
-    with _Silencio(contexto):
-        estado = elevadores.le_estado_cabine(cabine)
-    if not estado["nivelado"] or estado["falha"] or estado["porta_estado"]:
+    estado = _consulta("cabine %d" % cabine,
+                       lambda: elevadores.le_estado_cabine(cabine),
+                       lambda e: imprime_cabine(cabine, e))
+    if estado is not None and (not estado["nivelado"] or estado["falha"]
+                               or estado["porta_estado"]):
         exibe("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
               "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine)
-    exibe("\nuart> porta %d abrir ; monitora cabine %d %d"
-          % (cabine, cabine, DURACAO_DA_PORTA_S))
-    _executa_um(contexto, "porta %d abrir" % cabine)
-    _executa_um(contexto, "monitora cabine %d %d" % (cabine, DURACAO_DA_PORTA_S))
-    _passo(contexto, "porta %d fechar" % cabine)
+    for acao, duracao_s in (("abrir", DURACAO_DA_ABERTURA_S),
+                            ("fechar", DURACAO_DO_FECHAMENTO_S)):
+        linha = "porta %d %s ; monitora cabine %d %s" % (cabine, acao, cabine,
+                                                         duracao_s)
+        exibe("\nuart> %s" % linha)
+        executa(contexto, linha)
+    time.sleep(PAUSA_DO_ROTEIRO_S)
 
     exibe("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)")
-    with _Silencio(contexto):
-        chamada = elevadores.le_chamada_da_fila()
-    _passo(contexto, "fila")
+    chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila)
     if chamada is None:
         exibe("# fila vazia: registre uma chamada no quiosque e repita "
               "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine)
@@ -292,6 +311,11 @@ def _roteiro_parte_3(contexto, cabine):
     exibe("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa")
     _passo(contexto, "escreve 0x11 0 5")
     _passo(contexto, "le 0x11 0 20")
+
+    if servico is not None:
+        exibe("\n# 5. Condicao de Contorno automatica, para o watchdog nao "
+              "expirar de novo")
+        _passo(contexto, "auto on")
 
 
 def _roteiro(contexto, argumentos):
@@ -349,13 +373,7 @@ def _executa_um(contexto, linha):
         elif comando == "predio":
             imprime_predio(elevadores.le_estado_predio())
         elif comando == "fila":
-            chamada = elevadores.le_chamada_da_fila()
-            if chamada is None:
-                exibe("  => fila vazia")
-            else:
-                exibe("  => %d na fila; cabeca: chamada %d, andar %d -> %d"
-                      % (chamada["na_fila"], chamada["id"], chamada["origem"],
-                         chamada["destino"]))
+            imprime_fila(elevadores.le_chamada_da_fila())
         elif comando == "atribui":
             elevadores.atribui_chamada(int(argumentos[0]), int(argumentos[1]))
             exibe("  => chamada %s atribuida a cabine %s" % tuple(argumentos[:2]))

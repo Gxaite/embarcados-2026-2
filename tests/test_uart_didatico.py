@@ -184,7 +184,8 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
     from src.uart.elevadores import Elevadores
     monkeypatch.setattr(cli, "PAUSA_DO_ROTEIRO_S", 0)
     monkeypatch.setattr(cli, "EXPIRACAO_DO_WATCHDOG_S", 0)
-    monkeypatch.setattr(cli, "DURACAO_DA_PORTA_S", 0.05)
+    monkeypatch.setattr(cli, "DURACAO_DA_ABERTURA_S", 0.05)
+    monkeypatch.setattr(cli, "DURACAO_DO_FECHAMENTO_S", 0.05)
     eco = lambda texto: print(texto)
     porta.dispositivo.registra_chamada(0, 3)
     contexto = cli.Contexto(
@@ -198,9 +199,13 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
                      "uart> le 0x11 0 20", "fim do roteiro"):
         assert esperado in saida
     assert saida.count("EXCECAO 0x02") == 2
-    # As consultas internas do roteiro nao imprimem bytes: so os comandos.
+    # Toda transacao do roteiro e um comando impresso: nenhum TX sem prompt
+    # entre o titulo da secao e o primeiro comando dela.
     for secao, primeiro in (("# 1. watchdog", "uart> predio"),
-                            ("# 2. porta", "uart> porta"),
+                            ("# 2. porta", "uart> cabine 2"),
                             ("# 3. fila", "uart> fila")):
         assert "TX (" not in saida.split(secao)[1].split(primeiro)[0]
+    assert "uart> porta 2 fechar ; monitora cabine 2" in saida
+    # Sem BMP280 nao ha servico: a escrita automatica nem aparece.
+    assert "uart> auto on" not in saida
     assert "erro no comando" not in saida

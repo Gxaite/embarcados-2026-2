@@ -561,20 +561,27 @@ Contorno e fecham a UART e o I2C.
 ### 8.5 Roteiro de demonstração
 
 Sequência da Seção 3.4, item 5, da Entrega 2. O comando `roteiro` a executa
-inteira, com 2 s entre os comandos para que cada um apareça no widget: `roteiro 1`
+inteira, com 3 s entre os comandos para que cada um apareça no widget: `roteiro 1`
 cobre as Partes 1 e 2, `roteiro 3 <cabine>` a Parte 3 e `roteiro tudo <cabine>`
 as duas. Se o watchdog estiver válido, o roteiro desliga a escrita automática e
 espera 32 s para ele expirar. A chamada da fila precisa ser registrada no
 quiosque antes.
 
+Toda consulta do roteiro aparece no terminal como um comando, e a escrita
+automática só liga no final: na rasp50, depois de uns 30 eventos em 40 s, o
+widget passou mais de um minuto sem receber eventos, embora a ESP32 continuasse
+respondendo, e a escrita a cada 4 s gera sozinha 2 eventos por escrita.
+
 1. Watchdog: iniciar sem `--contorno-auto`, aguardar mais de 30 s e executar
    `predio`, que deve mostrar `watchdog_ambiente = 1` e `barramento_max = 3000`.
    Executar `contorno` e `predio` de novo: watchdog em 0 e barramento conforme
-   `12000 − 200 × max(0, T − 25)`. Em seguida, `auto on`.
-2. Porta: com uma cabine nivelada, `porta 1 abrir ; monitora cabine 1`, que
-   acompanha `fechada → abrindo → aberta`. Enter interrompe; `porta 1 fechar`.
-   Os dois comandos vão na mesma linha porque a porta abre em poucos segundos:
-   digitado depois, o `monitora` já a encontra fechando.
+   `12000 − 200 × max(0, T − 25)`. O `auto on` fica para o fim do roteiro.
+2. Porta: com uma cabine nivelada, `porta 1 abrir ; monitora cabine 1 3`,
+   que acompanha `fechada → abrindo → aberta`, e logo `porta 1 fechar ;
+   monitora cabine 1 5`, que acompanha `fechando → fechada`. Os comandos vão na
+   mesma linha porque a porta do simulador abre em uns 2 s, fica uns 3 s aberta
+   e fecha sozinha: digitado depois, o `monitora` já a encontra fechando, e o
+   `fechar` não teria efeito visível.
 3. Fila: registrar uma chamada no quiosque do dashboard, `fila`,
    `atribui <id> <cabine>`, `pop` e `fila` novamente.
 4. Exceções: `escreve 0x11 0 5` (registrador somente leitura) e
