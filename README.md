@@ -564,8 +564,8 @@ Sequência da Seção 3.4, item 5, da Entrega 2. O comando `roteiro` a executa
 inteira, com 3 s entre os comandos para que cada um apareça no widget: `roteiro 1`
 cobre as Partes 1 e 2, `roteiro 3 <cabine>` a Parte 3 e `roteiro tudo <cabine>`
 as duas. Se o watchdog estiver válido, o roteiro desliga a escrita automática e
-espera 32 s para ele expirar. A chamada da fila precisa ser registrada no
-quiosque antes.
+espera 32 s para ele expirar. Antes da fila ele pausa até um Enter, para dar
+tempo de registrar a chamada no quiosque.
 
 Toda consulta do roteiro aparece no terminal como um comando, e a escrita
 automática só liga no final: na rasp50, depois de uns 30 eventos em 40 s, o

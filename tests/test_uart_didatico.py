@@ -186,6 +186,7 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
     monkeypatch.setattr(cli, "EXPIRACAO_DO_WATCHDOG_S", 0)
     monkeypatch.setattr(cli, "DURACAO_DA_ABERTURA_S", 0.05)
     monkeypatch.setattr(cli, "DURACAO_DO_FECHAMENTO_S", 0.05)
+    monkeypatch.setattr("builtins.input", lambda *_: "")
     eco = lambda texto: print(texto)
     porta.dispositivo.registra_chamada(0, 3)
     contexto = cli.Contexto(

@@ -38,7 +38,8 @@ AJUDA = """
 
 ## Demonstracao (2 s entre comandos, para o widget acompanhar)
   roteiro 1                     os 12 comandos das Partes 1 e 2 e o erro de sintaxe
-  roteiro 3 [<cabine>]          watchdog, porta, fila e excecoes da Parte 3
+  roteiro 3 [<cabine>]          watchdog e BMP280, porta, fila e excecoes
+                                (pausa para registrar a chamada no quiosque)
   roteiro tudo [<cabine>]       as duas em sequencia
 
 ## Terminal
@@ -254,6 +255,15 @@ def _consulta(linha, le, imprime):
     return estado
 
 
+def _aguarda_enter(mensagem):
+    """Pausa para o que so se faz no dashboard. Sem terminal, segue direto."""
+    exibe(mensagem)
+    try:
+        input()
+    except EOFError:
+        pass
+
+
 def _roteiro_partes_1_e_2(contexto):
     matricula = " ".join("%X" % d for d in contexto.protocolos["p1"].matricula)
     for protocolo in ("p1", "p2"):
@@ -278,8 +288,11 @@ def _roteiro_parte_3(contexto, cabine):
               "expirar" % EXPIRACAO_DO_WATCHDOG_S)
         time.sleep(EXPIRACAO_DO_WATCHDOG_S)
         _passo(contexto, "predio")
-    _passo(contexto, "contorno" if contexto.sensor is not None
-           else "contorno 25 1013")
+    if contexto.sensor is not None:
+        _passo(contexto, "bmp")
+        _passo(contexto, "contorno")
+    else:
+        _passo(contexto, "contorno 25 1013")
     _passo(contexto, "predio")
 
     exibe("\n# 2. porta da cabine %d" % cabine)
@@ -298,7 +311,9 @@ def _roteiro_parte_3(contexto, cabine):
         executa(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
-    exibe("\n# 3. fila de chamadas (registrar antes no quiosque do dashboard)")
+    exibe("\n# 3. fila de chamadas")
+    _aguarda_enter("# registre uma chamada no quiosque do dashboard e tecle "
+                   "Enter")
     chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila)
     if chamada is None:
         exibe("# fila vazia: registre uma chamada no quiosque e repita "
@@ -316,6 +331,7 @@ def _roteiro_parte_3(contexto, cabine):
         exibe("\n# 5. Condicao de Contorno automatica, para o watchdog nao "
               "expirar de novo")
         _passo(contexto, "auto on")
+        _passo(contexto, "predio")
 
 
 def _roteiro(contexto, argumentos):
