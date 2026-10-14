@@ -423,9 +423,29 @@ python3 -m src.comunicacao --simulado        # sem placa
 | `--matricula <número>` | matrícula; usa os 6 últimos dígitos |
 | `--timeout <s>` | timeout de cada tentativa, entre 0,2 e 0,5 s (padrão 0,3) |
 | `--contorno-auto` | liga a escrita periódica da Condição de Contorno na partida |
+| `--comandos` | abre o terminal de comandos em vez do menu numerado |
 | `--sem-cor` | terminal sem cores (também desligadas com `NO_COLOR` ou saída redirecionada) |
 
-### 8.2 Comandos do terminal
+### 8.2 Menu e comandos do terminal
+
+O programa abre num menu numerado: cada parte tem um submenu com uma opção por
+operação, e `0` volta. Os valores são perguntados com um padrão, aceito com
+Enter. Cada opção mostra o comando equivalente (`uart> p1 envia-int 42`) e o
+executa como se tivesse sido digitado, com os mesmos bytes `TX` e `RX`.
+
+```
+== Menu principal ==                     == Menu principal > Parte 1 ... ==
+   1  Parte 1 - protocolo simplificado      1  Receber valores: inteiro, float e string
+   2  Parte 2 - MODBUS didatico             2  Enviar valores: inteiro, float e string
+   3  Parte 3 - cabines e predio            3  Receber inteiro (0xA1)
+   4  I2C e Condicao de Contorno            ...
+   5  Roteiros de demonstracao              9  Comando invalido 0xC7
+   6  Terminal UART (digitar comandos)      0  Voltar
+   0  Sair
+```
+
+A opção 6, ou a opção `--comandos`, abre o terminal de comandos abaixo; nele,
+`menu` volta ao menu.
 
 Nas Partes 1 e 2 o protocolo é escolhido antes de cada comando: `p1` para o
 simplificado e `p2` para o MODBUS.
@@ -452,6 +472,7 @@ simplificado e `p2` para o MODBUS.
 | `bmp` | lê temperatura e pressão do BMP280 |
 | `auto [on\|off\|log]` | escrita periódica da Condição de Contorno |
 | `chamada <origem> <destino>` | registra chamada (apenas no modo simulado) |
+| `menu` | abre o menu numerado |
 | `<comando> ; <comando>` | executa vários comandos em sequência na mesma linha |
 | `roteiro 1`, `roteiro 2`, `roteiro 3 [<cabine>]`, `roteiro tudo [<cabine>]` | executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração) sozinho |
 
@@ -554,11 +575,11 @@ Contorno e fecham a UART e o I2C.
 | Parte 1, 6 comandos sem CRC | `uart/simplificado.py` |
 | Parte 2, 6 comandos com CRC e matrícula de 6 dígitos | `uart/modbus_didatico.py`, `uart/crc16.py` |
 | Parte 2, bit de erro e código de exceção | `ModbusDidatico.interpreta` |
-| Parte 2, escolha do protocolo antes de cada comando | prefixo `p1` ou `p2` |
+| Parte 2, escolha do protocolo antes de cada comando | submenus Parte 1 e Parte 2, ou prefixo `p1` ou `p2` no terminal |
 | Parte 3, funções `0x03` e `0x10` | `uart/modbus.py` |
 | Parte 3, validação, timeout e 3 tentativas | `ClienteModbus._transacao` |
 | Parte 3, exceções sem repetição | `ExcecaoModbus` em `uart/erros.py` |
-| Parte 3, uma opção por função e leitura contínua | `cli_comunicacao.py`, `monitora` |
+| Parte 3, uma opção por função e leitura contínua | `menu_comunicacao.py` e `cli_comunicacao.py`, `monitora` |
 | Bytes enviados e recebidos em tela | todos os comandos |
 | Funções independentes e utilitários | `envia_pacote`, `le_resposta`, `calcula_crc`, entre outros |
 | Módulo da Parte 3 importável | `uart/modbus.py` e `uart/elevadores.py`, sem dependência da CLI |
@@ -608,16 +629,18 @@ a sessão de bancada.
 
 ```bash
 python3 -m pytest tests/test_modbus.py tests/test_uart_didatico.py \
-    tests/test_i2c_e_contorno.py tests/test_porta_serial.py -q
+    tests/test_i2c_e_contorno.py tests/test_porta_serial.py \
+    tests/test_menu_comunicacao.py -q
 ```
 
-São 69 testes, executados em cerca de um segundo:
+São 77 testes, executados em cerca de um segundo:
 
 | Arquivo | Cobre |
 |:--|:--|
 | `test_modbus.py` | CRC e quadros contra os exemplos da Seção 3.3, ordem dos bytes, retentativas, `pop` sem repetição, validação da resposta, exceções e as funções da Parte 3 |
 | `test_uart_didatico.py` | os 12 comandos das Partes 1 e 2, os formatos de resposta aceitos, a matrícula e os erros de tamanho |
 | `test_i2c_e_contorno.py` | compensação do BMP280 contra o exemplo do datasheet, driver e serviço da Condição de Contorno |
+| `test_menu_comunicacao.py` | navegação do menu, comandos montados por cada opção, validação dos valores e volta ao terminal |
 | `test_porta_serial.py` | a `PortaSerial` real contra um pseudo-terminal: modo cru, prazo de leitura e descarte do buffer |
 
 Os testes usam a ESP32 simulada, que segue o enunciado mas não substitui a

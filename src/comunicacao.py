@@ -14,6 +14,7 @@ import signal
 import sys
 
 from . import cli_comunicacao as cli
+from . import menu_comunicacao as menu
 from . import tela
 from .central.condicao_contorno import PERIODO_PADRAO_S, ServicoCondicaoContorno
 from .i2c import bmp280
@@ -28,7 +29,8 @@ from .uart.simplificado import ProtocoloSimplificado
 _imprime = tela.exibe
 
 
-def banner(matricula, simulado, porta, timeout_s, sensor, contorno_auto):
+def banner(matricula, simulado, porta, timeout_s, sensor, contorno_auto,
+           comandos):
     linhas = (
         ("matricula", mat.como_texto(matricula)),
         ("UART", "ESP32 simulada" if simulado else "%s, 115200 8N1" % porta),
@@ -46,7 +48,9 @@ def banner(matricula, simulado, porta, timeout_s, sensor, contorno_auto):
         texto = ("  %-10s %s" % (rotulo, valor)).ljust(largura)
         print(tela.cor("|", tela.FRACO) + texto + tela.cor("|", tela.FRACO))
     print(tela.cor("+" + "-" * largura + "+", tela.FRACO))
-    print("digite 'ajuda' para a lista de comandos\n", flush=True)
+    if comandos:
+        print("digite 'ajuda' para a lista de comandos e 'menu' para o menu "
+              "numerado\n", flush=True)
 
 
 def obtem_matricula(argumento):
@@ -95,6 +99,23 @@ def abre_sensor(simulado, numero_do_barramento):
         return None, None
 
 
+def terminal(contexto):
+    """Terminal de comandos; 'menu' abre o menu numerado e volta para ca."""
+    while True:
+        try:
+            linha = input(tela.prompt("uart> "))
+        except EOFError:
+            return
+        if linha.strip().lower() == "menu":
+            if menu.navega(contexto, raiz=False):
+                return
+            continue
+        if not cli.executa(contexto, linha):
+            return
+        if linha.strip():
+            print(flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Entrega 2: UART-MODBUS e I2C")
     parser.add_argument("--simulado", action="store_true",
@@ -109,6 +130,8 @@ def main(argv=None):
                         help="timeout de cada tentativa, em s (0,2 a 0,5)")
     parser.add_argument("--contorno-auto", action="store_true",
                         help="liga a escrita periodica da Condicao de Contorno")
+    parser.add_argument("--comandos", action="store_true",
+                        help="abre o terminal de comandos em vez do menu")
     parser.add_argument("--sem-cor", action="store_true",
                         help="terminal sem cores")
     args = parser.parse_args(argv)
@@ -166,19 +189,14 @@ def main(argv=None):
         signal.signal(sinal, encerra)
 
     banner(matricula, args.simulado, args.porta, args.timeout, sensor,
-           args.contorno_auto and servico is not None)
+           args.contorno_auto and servico is not None, args.comandos)
     if args.contorno_auto and servico is not None:
         servico.inicia()
     try:
-        while True:
-            try:
-                linha = input(tela.prompt("uart> "))
-            except EOFError:
-                break
-            if not cli.executa(contexto, linha):
-                break
-            if linha.strip():
-                print(flush=True)
+        if args.comandos:
+            terminal(contexto)
+        else:
+            menu.navega(contexto)
     finally:
         finaliza()
     return 0

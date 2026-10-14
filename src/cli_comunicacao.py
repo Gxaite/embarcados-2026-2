@@ -44,6 +44,7 @@ AJUDA = """
   roteiro tudo [<cabine>]       as tres em sequencia
 
 ## Terminal
+  menu                          menu numerado
   <cmd> ; <cmd>                 varios comandos na mesma linha
   chamada <origem> <destino>    registra chamada (so no modo --simulado)
   ajuda | sair
