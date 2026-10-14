@@ -428,23 +428,23 @@ python3 -m src.comunicacao --simulado        # sem placa
 
 ### 8.2 Menu e comandos do terminal
 
-O programa abre num menu numerado: cada parte tem um submenu com uma opção por
-operação, e `0` volta. Os valores são perguntados com um padrão, aceito com
-Enter. Cada opção mostra o comando equivalente (`uart> p1 envia-int 42`) e o
-executa como se tivesse sido digitado, com os mesmos bytes `TX` e `RX`.
+O programa abre num menu numerado. Nas Partes 1 e 2, "Receber valores" faz os
+três pedidos (`0xA1` a `0xA3`) e "Enviar valores" os três envios (`0xB1` a
+`0xB3`), com os valores perguntados e um padrão aceito com Enter. A Parte 3
+executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração). Cada
+opção mostra o comando equivalente (`uart> p1 pede-int ; ...`) e o executa
+como se tivesse sido digitado, com os mesmos bytes `TX` e `RX`.
 
 ```
 == Menu principal ==                     == Menu principal > Parte 1 ... ==
    1  Parte 1 - protocolo simplificado      1  Receber valores: inteiro, float e string
    2  Parte 2 - MODBUS didatico             2  Enviar valores: inteiro, float e string
-   3  Parte 3 - cabines e predio            3  Receber inteiro (0xA1)
-   4  I2C e Condicao de Contorno            ...
-   5  Roteiros de demonstracao              9  Comando invalido 0xC7
-   6  Terminal UART (digitar comandos)      0  Voltar
+   3  Parte 3 - demonstracao                3  Comando invalido 0xC7
+   4  Terminal UART (digitar comandos)      0  Voltar
    0  Sair
 ```
 
-A opção 6, ou a opção `--comandos`, abre o terminal de comandos abaixo; nele,
+A opção 4, ou a opção `--comandos`, abre o terminal de comandos abaixo; nele,
 `menu` volta ao menu.
 
 Nas Partes 1 e 2 o protocolo é escolhido antes de cada comando: `p1` para o
@@ -633,14 +633,14 @@ python3 -m pytest tests/test_modbus.py tests/test_uart_didatico.py \
     tests/test_menu_comunicacao.py -q
 ```
 
-São 77 testes, executados em cerca de um segundo:
+São 74 testes, executados em cerca de um segundo:
 
 | Arquivo | Cobre |
 |:--|:--|
 | `test_modbus.py` | CRC e quadros contra os exemplos da Seção 3.3, ordem dos bytes, retentativas, `pop` sem repetição, validação da resposta, exceções e as funções da Parte 3 |
 | `test_uart_didatico.py` | os 12 comandos das Partes 1 e 2, os formatos de resposta aceitos, a matrícula e os erros de tamanho |
 | `test_i2c_e_contorno.py` | compensação do BMP280 contra o exemplo do datasheet, driver e serviço da Condição de Contorno |
-| `test_menu_comunicacao.py` | navegação do menu, comandos montados por cada opção, validação dos valores e volta ao terminal |
+| `test_menu_comunicacao.py` | navegação do menu, comandos montados por cada opção, demonstração da Parte 3, validação dos valores e volta ao terminal |
 | `test_porta_serial.py` | a `PortaSerial` real contra um pseudo-terminal: modo cru, prazo de leitura e descarte do buffer |
 
 Os testes usam a ESP32 simulada, que segue o enunciado mas não substitui a
