@@ -17,7 +17,9 @@ class Sair(Exception):
 class Menu:
     def __init__(self, titulo, opcoes):
         self.titulo = titulo
-        self.opcoes = opcoes      # [(rotulo, acao)]; acao: str, funcao ou Menu
+        # [(rotulo, acao)]. acao: Menu, linha de comando, lista de passos
+        # (aviso, linha) ou funcao do contexto que devolve um dos dois.
+        self.opcoes = opcoes
 
 
 # ------------------------------------------------------------- perguntas
@@ -39,20 +41,6 @@ def _pergunta(rotulo, padrao, valida):
             exibe("  valor invalido: %s" % erro)
 
 
-def _inteiro(texto):
-    int(texto, 0)
-
-
-def _real(texto):
-    float(texto)
-
-
-def _texto(texto):
-    # O ';' separa comandos na linha que o menu executa.
-    if ";" in texto:
-        raise ValueError("o texto nao pode ter ';'")
-
-
 def _cabine(texto):
     if texto not in ("1", "2", "3"):
         raise ValueError("cabine e 1, 2 ou 3")
@@ -63,24 +51,61 @@ def _pergunta_cabine():
 
 
 # ---------------------------------------------------------------- menus
+# Valores fixos dos envios: a opcao roda sem perguntar nada.
+INTEIRO_ENVIADO = 42
+FLOAT_ENVIADO = 3.14
+TEXTO_ENVIADO = "teste"
+
+
+def _recebe_valores(protocolo):
+    return [
+        ("# solicita o inteiro; a ESP32 devolve um valor constante",
+         "%s pede-int" % protocolo),
+        ("# solicita o float; a ESP32 devolve um valor constante",
+         "%s pede-float" % protocolo),
+        ("# solicita a string; a ESP32 devolve um texto constante",
+         "%s pede-string" % protocolo),
+    ]
+
+
+def _envia_valores(protocolo):
+    def passos(contexto):
+        # A matricula e a mesma nos dois protocolos; so o p1 a expoe.
+        digito = contexto.protocolos["p1"].matricula[-1]
+        return [
+            ("# inteiro enviado: %d; esperado %d x %d = %d (ultimo digito da "
+             "matricula)" % (INTEIRO_ENVIADO, INTEIRO_ENVIADO, digito,
+                             INTEIRO_ENVIADO * digito),
+             "%s envia-int %d" % (protocolo, INTEIRO_ENVIADO)),
+            ("# float enviado: %g; esperado %g x %d = %g"
+             % (FLOAT_ENVIADO, FLOAT_ENVIADO, digito, FLOAT_ENVIADO * digito),
+             "%s envia-float %g" % (protocolo, FLOAT_ENVIADO)),
+            ("# string enviada: \"%s\"; esperado \"Resposta da UART: %s\""
+             % (TEXTO_ENVIADO, TEXTO_ENVIADO),
+             "%s envia-string %s" % (protocolo, TEXTO_ENVIADO)),
+        ]
+    return passos
+
+
+def _comando_invalido(contexto):
+    matricula = " ".join("%X" % d for d in contexto.protocolos["p1"].matricula)
+    return [("# comando 0xC7, fora da faixa: a ESP32 descarta o pacote sem "
+             "responder, e a Raspberry registra o timeout",
+             "p1 cru C7 %s" % matricula)]
+
+
 def _menu_didatico(protocolo, titulo):
     """Receber e enviar os tres tipos de uma vez: e o que a parte testa."""
-    def envia_valores(_c):
-        return " ; ".join((
-            "%s envia-int %s" % (protocolo, _pergunta("inteiro", "42", _inteiro)),
-            "%s envia-float %s" % (protocolo, _pergunta("float", "3.14", _real)),
-            "%s envia-string %s" % (protocolo, _pergunta("texto", "teste", _texto))))
-
     opcoes = [
         ("Receber valores: inteiro, float e string (0xA1-0xA3)",
-         " ; ".join("%s %s" % (protocolo, acao)
-                    for acao in ("pede-int", "pede-float", "pede-string"))),
-        ("Enviar valores: inteiro, float e string (0xB1-0xB3)", envia_valores),
+         _recebe_valores(protocolo)),
+        ("Enviar valores: %d, %g e \"%s\" (0xB1-0xB3)"
+         % (INTEIRO_ENVIADO, FLOAT_ENVIADO, TEXTO_ENVIADO),
+         _envia_valores(protocolo)),
     ]
     if protocolo == "p1":
         opcoes.append(("Comando invalido 0xC7 (erro de sintaxe: timeout)",
-                       lambda c: "p1 cru C7 " + " ".join(
-                           "%X" % d for d in c.protocolos["p1"].matricula)))
+                       _comando_invalido))
     return Menu(titulo, opcoes)
 
 
@@ -137,9 +162,15 @@ def _navega(contexto, menu, caminho):
         if isinstance(acao, Menu):
             _navega(contexto, acao, caminho + [menu.titulo])
             continue
-        linha = acao if isinstance(acao, str) else acao(contexto)
-        if linha:
-            exibe("\nuart> %s" % linha)
+        if callable(acao):
+            acao = acao(contexto)
+        if isinstance(acao, str):
+            acao = [(None, acao)]
+        for aviso, linha in acao or ():
+            exibe()
+            if aviso:
+                exibe(aviso)
+            exibe("uart> %s" % linha)
             if not cli.executa(contexto, linha):
                 raise Sair()
 

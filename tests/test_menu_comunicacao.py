@@ -40,27 +40,29 @@ def _digita(monkeypatch, *entradas):
 
 
 def test_parte_1_recebe_envia_e_provoca_o_erro(contexto, monkeypatch, capsys):
-    # Receber valores, enviar valores com os padroes, comando invalido.
-    _digita(monkeypatch, "1", "1", "2", "", "", "", "3", "0", "0")
+    # Receber valores, enviar valores e comando invalido, sem perguntar nada.
+    _digita(monkeypatch, "1", "1", "2", "3", "0", "0")
     assert menu.navega(contexto) is True
     saida = capsys.readouterr().out
-    for esperado in ("uart> p1 pede-int ; p1 pede-float ; p1 pede-string",
-                     "uart> p1 envia-int 42 ; p1 envia-float 3.14 ; "
-                     "p1 envia-string teste",
-                     "uart> p1 cru C7 6 5 4 3 2 1", "int = 42"):
+    for esperado in ("uart> p1 pede-int", "uart> p1 pede-float",
+                     "uart> p1 pede-string", "uart> p1 envia-int 42",
+                     "uart> p1 envia-float 3.14", "uart> p1 envia-string teste",
+                     "inteiro enviado: 42; esperado 42 x 1 = 42",
+                     "uart> p1 cru C7 6 5 4 3 2 1", "registra o timeout",
+                     "int = 42"):
         assert esperado in saida
     assert saida.count("TX (") == 7
 
 
-def test_parte_2_valida_os_valores_e_nao_tem_o_comando_cru(contexto, monkeypatch,
-                                                           capsys):
-    _digita(monkeypatch, "2", "3", "2", "abc", "7", "2.5", "oi", "0", "0")
+def test_parte_2_envia_sem_perguntar_e_nao_tem_o_comando_cru(contexto, monkeypatch,
+                                                             capsys):
+    _digita(monkeypatch, "2", "3", "2", "0", "0")
     menu.navega(contexto)
     saida = capsys.readouterr().out
     assert "opcao invalida: '3'" in saida
-    assert "valor invalido" in saida
-    assert ("uart> p2 envia-int 7 ; p2 envia-float 2.5 ; p2 envia-string oi"
-            in saida)
+    assert "string enviada: \"teste\"" in saida
+    assert "uart> p2 envia-string teste" in saida
+    assert saida.count("TX (") == 3
 
 
 def test_parte_3_executa_a_demonstracao(contexto, esp32, monkeypatch, capsys):
