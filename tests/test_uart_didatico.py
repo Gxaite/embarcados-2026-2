@@ -196,7 +196,7 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
     assert cli.executa(contexto, "roteiro tudo 2") is True
     saida = capsys.readouterr().out
     for esperado in ("uart> p2 envia-string teste", "uart> p1 cru C7 6 5 4 3 2 1",
-                     "uart> contorno 25 1013", "uart> atribui 1 2", "uart> pop",
+                     "uart> contorno 25 1013", "uart> atribui 1 2", "uart> pop 1",
                      "uart> le 0x11 0 20", "fim do roteiro"):
         assert esperado in saida
     assert saida.count("EXCECAO 0x02") == 2
@@ -204,9 +204,30 @@ def test_roteiro_completo_contra_a_esp32_simulada(porta, monkeypatch, capsys):
     # entre o titulo da secao e o primeiro comando dela.
     for secao, primeiro in (("# 1. watchdog", "uart> predio"),
                             ("# 2. porta", "uart> cabine 2"),
-                            ("# 3. fila", "uart> fila")):
+                            ("# 3. fila", "uart> contorno")):
         assert "TX (" not in saida.split(secao)[1].split(primeiro)[0]
     assert "uart> porta 2 fechar ; monitora cabine 2" in saida
     # Sem BMP280 nao ha servico: a escrita automatica nem aparece.
     assert "uart> auto on" not in saida
+    assert "erro no comando" not in saida
+
+
+def test_roteiros_1_e_2_separados(porta, monkeypatch, capsys):
+    from src import cli_comunicacao as cli
+    monkeypatch.setattr(cli, "PAUSA_DO_ROTEIRO_S", 0)
+    eco = lambda texto: print(texto)
+    contexto = cli.Contexto(
+        ProtocoloSimplificado(porta, MATRICULA, eco=eco),
+        ModbusDidatico(porta, MATRICULA, eco=eco), None)
+
+    assert cli.executa(contexto, "roteiro 1") is True
+    saida = capsys.readouterr().out
+    assert saida.count("uart> p1 ") == 7
+    assert "uart> p1 cru C7 6 5 4 3 2 1" in saida
+    assert "uart> p2 " not in saida
+
+    assert cli.executa(contexto, "roteiro 2") is True
+    saida = capsys.readouterr().out
+    assert saida.count("uart> p2 ") == 6
+    assert "uart> p1 " not in saida
     assert "erro no comando" not in saida

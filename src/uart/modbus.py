@@ -82,8 +82,14 @@ class ClienteModbus:
                                             hexa(resposta[-2:])))
         return valores
 
-    def escreve_registradores(self, endereco, registrador, valores):
-        """Funcao 0x10. Escreve os valores em registradores consecutivos."""
+    def escreve_registradores(self, endereco, registrador, valores,
+                              ja_aplicada=None):
+        """Funcao 0x10. Escreve os valores em registradores consecutivos.
+
+        `ja_aplicada` serve a escrita que nao pode ser repetida as cegas, como
+        o pop da fila: e chamada antes de cada repeticao e, se devolver True,
+        a tentativa anterior chegou ao dispositivo e so a resposta se perdeu.
+        """
         valores = [uint16_de(v) for v in valores]
         quantidade = len(valores)
         if not 1 <= quantidade <= MAXIMO_DE_REGISTRADORES:
@@ -96,7 +102,9 @@ class ClienteModbus:
         self._mostra("[MODBUS 0x10] escreve %s a partir do registrador %d no "
                      "dispositivo 0x%02X" % (valores, registrador, endereco))
         resposta = self._transacao(quadro, endereco, FUNCAO_ESCREVE,
-                                   self._le_resposta_escrita)
+                                   self._le_resposta_escrita, ja_aplicada)
+        if resposta is None:
+            return
         eco_registrador, eco_quantidade = struct.unpack(">HH", resposta[2:6])
         if (eco_registrador, eco_quantidade) != (registrador, quantidade):
             # O quadro passou no CRC, entao nao e ruido: o dispositivo
@@ -109,10 +117,15 @@ class ClienteModbus:
                         hexa(resposta[-2:])))
 
     # ----------------------------------------------------------- transacao
-    def _transacao(self, quadro, endereco, funcao, le_resto):
-        """Envia, le e valida, repetindo em timeout ou quadro corrompido."""
+    def _transacao(self, quadro, endereco, funcao, le_resto, ja_aplicada=None):
+        """Envia, le e valida, repetindo em timeout ou quadro corrompido.
+        Devolve None se `ja_aplicada` disser que a repeticao e desnecessaria."""
         ultimo_erro = None
         for tentativa in range(1, self.tentativas + 1):
+            if tentativa > 1 and ja_aplicada is not None and ja_aplicada():
+                self._mostra("  a tentativa anterior ja tinha sido aplicada: "
+                             "a escrita nao e repetida")
+                return None
             self.transacoes += 1
             try:
                 with self._porta.trava:

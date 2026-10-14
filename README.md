@@ -444,7 +444,7 @@ simplificado e `p2` para o MODBUS.
 | `predio` | `le_estado_predio()` |
 | `fila` | `le_chamada_da_fila()` |
 | `atribui <id> <cabine>` | `atribui_chamada()` |
-| `pop` | `remove_chamada_da_fila()` |
+| `pop [<id>]` | `remove_chamada_da_fila()`; sem o id, lê a cabeça da fila antes |
 | `contorno [<°C> <hPa>]` | `escreve_condicao_contorno()`; sem argumentos, lê o BMP280 |
 | `le <end> <reg> <qtd>` | função `0x03` em qualquer faixa |
 | `escreve <end> <reg> <valor>...` | função `0x10` em qualquer registrador |
@@ -453,7 +453,7 @@ simplificado e `p2` para o MODBUS.
 | `auto [on\|off\|log]` | escrita periódica da Condição de Contorno |
 | `chamada <origem> <destino>` | registra chamada (apenas no modo simulado) |
 | `<comando> ; <comando>` | executa vários comandos em sequência na mesma linha |
-| `roteiro 1`, `roteiro 3 [<cabine>]`, `roteiro tudo [<cabine>]` | executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração) sozinho |
+| `roteiro 1`, `roteiro 2`, `roteiro 3 [<cabine>]`, `roteiro tudo [<cabine>]` | executa a demonstração da [Seção 8.5](#85-roteiro-de-demonstração) sozinho |
 
 Todo comando imprime um cabeçalho, os bytes enviados (`TX`) e recebidos
 (`RX`), os campos decodificados e, na linha `=>`, o resultado. No terminal,
@@ -509,6 +509,12 @@ transação. Antes de usar a resposta são conferidos CRC, endereço, função,
 | CRC inválido | descarta e repete |
 | endereço, função ou `byte_count` divergentes | repete |
 | exceção `0x01`, `0x02` ou `0x03` | reporta código e significado, sem repetir |
+| falha no `pop` da fila | relê a fila antes de repetir: se a chamada já saiu, não repete |
+
+O `pop` é a única escrita que não pode ser repetida às cegas. Na bancada, uma
+resposta corrompida depois de o simulador já ter removido a chamada fez o
+`pop` ser executado duas vezes; com mais chamadas na fila, a segunda execução
+descartaria a chamada seguinte.
 
 Ordem dos bytes, conforme a Seção 3.1: `reg`, `qtd` e valores da requisição em
 little-endian; valores da resposta `0x03` e eco da resposta `0x10` em
@@ -562,9 +568,9 @@ Contorno e fecham a UART e o I2C.
 
 Sequência da Seção 3.4, item 5, da Entrega 2. O comando `roteiro` a executa
 inteira, com 3 s entre os comandos para que cada um apareça no widget: `roteiro 1`
-cobre as Partes 1 e 2, `roteiro 3 <cabine>` a Parte 3 e `roteiro tudo <cabine>`
-as duas. Se o watchdog estiver válido, o roteiro desliga a escrita automática e
-espera 32 s para ele expirar. Antes da fila ele pausa até um Enter, para dar
+cobre a Parte 1 e o erro de sintaxe, `roteiro 2` a Parte 2, `roteiro 3 <cabine>`
+a Parte 3 e `roteiro tudo <cabine>` as três. Se o watchdog estiver válido, o
+roteiro desliga a escrita automática e espera 32 s para ele expirar. Antes da fila ele pausa até um Enter, para dar
 tempo de registrar a chamada no quiosque.
 
 Toda consulta do roteiro aparece no terminal como um comando, e a escrita
@@ -583,7 +589,9 @@ respondendo, e a escrita a cada 4 s gera sozinha 2 eventos por escrita.
    e fecha sozinha: digitado depois, o `monitora` já a encontra fechando, e o
    `fechar` não teria efeito visível.
 3. Fila: registrar uma chamada no quiosque do dashboard, `fila`,
-   `atribui <id> <cabine>`, `pop` e `fila` novamente.
+   `atribui <id> <cabine>`, `pop <id>` e `fila` novamente. Antes da fila o
+   roteiro escreve a Condição de Contorno de novo, porque a porta e a pausa
+   já passam dos 30 s do watchdog.
 4. Exceções: `escreve 0x11 0 5` (registrador somente leitura) e
    `le 0x11 0 20` (faixa fora do mapa) devem retornar a exceção `0x02`.
 
@@ -603,11 +611,11 @@ python3 -m pytest tests/test_modbus.py tests/test_uart_didatico.py \
     tests/test_i2c_e_contorno.py tests/test_porta_serial.py -q
 ```
 
-São 60 testes, executados em cerca de um segundo:
+São 69 testes, executados em cerca de um segundo:
 
 | Arquivo | Cobre |
 |:--|:--|
-| `test_modbus.py` | CRC e quadros contra os exemplos da Seção 3.3, ordem dos bytes, retentativas, validação da resposta, exceções e as funções da Parte 3 |
+| `test_modbus.py` | CRC e quadros contra os exemplos da Seção 3.3, ordem dos bytes, retentativas, `pop` sem repetição, validação da resposta, exceções e as funções da Parte 3 |
 | `test_uart_didatico.py` | os 12 comandos das Partes 1 e 2, os formatos de resposta aceitos, a matrícula e os erros de tamanho |
 | `test_i2c_e_contorno.py` | compensação do BMP280 contra o exemplo do datasheet, driver e serviço da Condição de Contorno |
 | `test_porta_serial.py` | a `PortaSerial` real contra um pseudo-terminal: modo cru, prazo de leitura e descarte do buffer |

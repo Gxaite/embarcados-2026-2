@@ -229,3 +229,39 @@ def test_atribuicao_a_cabine_inexistente_nem_sai_da_raspberry(cliente, porta):
     with pytest.raises(ValueError):
         Elevadores(cliente).atribui_chamada(1, 4)
     assert porta.enviados == []
+
+
+def test_pop_com_resposta_perdida_nao_remove_a_chamada_seguinte(cliente, porta, esp32):
+    esp32.registra_chamada(0, 4)
+    esp32.registra_chamada(2, 0)
+    elevadores = Elevadores(cliente)
+    # O simulador remove a chamada 1, mas a resposta do pop se perde.
+    porta.perturbacoes = [lambda _r: None]
+    assert elevadores.remove_chamada_da_fila(1) == 1
+    assert elevadores.le_chamada_da_fila()["id"] == 2
+
+
+def test_pop_repete_se_a_escrita_nao_chegou(cliente, porta, esp32):
+    esp32.registra_chamada(0, 4)
+    esp32.registra_chamada(2, 0)
+    elevadores = Elevadores(cliente)
+    processa = esp32.processa
+    perdidas = [True]
+
+    def perde_a_primeira(quadro):
+        if perdidas and quadro[1] == 0x10:
+            perdidas.pop()
+            return None
+        return processa(quadro)
+    esp32.processa = perde_a_primeira
+    assert elevadores.remove_chamada_da_fila(1) == 1
+    assert elevadores.le_chamada_da_fila()["id"] == 2
+
+
+def test_pop_sem_id_le_a_cabeca_e_com_fila_vazia_nao_escreve(cliente, porta, esp32):
+    elevadores = Elevadores(cliente)
+    assert elevadores.remove_chamada_da_fila() is None
+    assert all(quadro[1] == 0x03 for quadro in porta.enviados)
+    esp32.registra_chamada(0, 4)
+    assert elevadores.remove_chamada_da_fila() == 1
+    assert elevadores.le_chamada_da_fila() is None

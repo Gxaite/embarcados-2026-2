@@ -25,7 +25,7 @@ AJUDA = """
   predio                        le_estado_predio()
   fila                          le_chamada_da_fila()
   atribui <id> <cabine>         atribui_chamada()
-  pop                           remove_chamada_da_fila()
+  pop [<id>]                    remove_chamada_da_fila()
   contorno [<graus C> <hPa>]    escreve_condicao_contorno() (sem argumento: BMP280)
   le <end> <reg> <qtd>          funcao 0x03 crua (teste de excecao)
   escreve <end> <reg> <v>...    funcao 0x10 crua (teste de excecao)
@@ -36,11 +36,12 @@ AJUDA = """
   bmp                           le temperatura e pressao do BMP280
   auto [on|off|log]             escrita periodica da Condicao de Contorno (4 s)
 
-## Demonstracao (2 s entre comandos, para o widget acompanhar)
-  roteiro 1                     os 12 comandos das Partes 1 e 2 e o erro de sintaxe
+## Demonstracao (3 s entre comandos, para o widget acompanhar)
+  roteiro 1                     os 6 comandos da Parte 1 e o erro de sintaxe
+  roteiro 2                     os 6 comandos da Parte 2
   roteiro 3 [<cabine>]          watchdog e BMP280, porta, fila e excecoes
                                 (pausa para registrar a chamada no quiosque)
-  roteiro tudo [<cabine>]       as duas em sequencia
+  roteiro tudo [<cabine>]       as tres em sequencia
 
 ## Terminal
   <cmd> ; <cmd>                 varios comandos na mesma linha
@@ -255,6 +256,12 @@ def _consulta(linha, le, imprime):
     return estado
 
 
+def _passo_contorno(contexto):
+    """Escrita da Condicao de Contorno; sem BMP280, com valores fixos."""
+    _passo(contexto, "contorno" if contexto.sensor is not None
+           else "contorno 25 1013")
+
+
 def _aguarda_enter(mensagem):
     """Pausa para o que so se faz no dashboard. Sem terminal, segue direto."""
     exibe(mensagem)
@@ -264,15 +271,22 @@ def _aguarda_enter(mensagem):
         pass
 
 
-def _roteiro_partes_1_e_2(contexto):
+def _roteiro_seis_comandos(contexto, protocolo):
+    for comando in ("pede-int", "pede-float", "pede-string", "envia-int 42",
+                    "envia-float 3.14", "envia-string teste"):
+        _passo(contexto, "%s %s" % (protocolo, comando))
+
+
+def _roteiro_parte_1(contexto):
+    _roteiro_seis_comandos(contexto, "p1")
     matricula = " ".join("%X" % d for d in contexto.protocolos["p1"].matricula)
-    for protocolo in ("p1", "p2"):
-        for comando in ("pede-int", "pede-float", "pede-string", "envia-int 42",
-                        "envia-float 3.14", "envia-string teste"):
-            _passo(contexto, "%s %s" % (protocolo, comando))
     exibe("\n# comando 0xC7 fora da faixa: a ESP32 descarta e a RPi registra o "
           "timeout")
     _passo(contexto, "p1 cru C7 %s" % matricula)
+
+
+def _roteiro_parte_2(contexto):
+    _roteiro_seis_comandos(contexto, "p2")
 
 
 def _roteiro_parte_3(contexto, cabine):
@@ -290,9 +304,7 @@ def _roteiro_parte_3(contexto, cabine):
         _passo(contexto, "predio")
     if contexto.sensor is not None:
         _passo(contexto, "bmp")
-        _passo(contexto, "contorno")
-    else:
-        _passo(contexto, "contorno 25 1013")
+    _passo_contorno(contexto)
     _passo(contexto, "predio")
 
     exibe("\n# 2. porta da cabine %d" % cabine)
@@ -314,13 +326,16 @@ def _roteiro_parte_3(contexto, cabine):
     exibe("\n# 3. fila de chamadas")
     _aguarda_enter("# registre uma chamada no quiosque do dashboard e tecle "
                    "Enter")
+    exibe("# renova a Condicao de Contorno: a porta e a pausa ja passaram dos "
+          "30 s do watchdog")
+    _passo_contorno(contexto)
     chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila)
     if chamada is None:
         exibe("# fila vazia: registre uma chamada no quiosque e repita "
               "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine)
     else:
         _passo(contexto, "atribui %d %d" % (chamada["id"], cabine))
-        _passo(contexto, "pop")
+        _passo(contexto, "pop %d" % chamada["id"])
         _passo(contexto, "fila")
 
     exibe("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa")
@@ -339,14 +354,17 @@ def _roteiro(contexto, argumentos):
     cabine = int(argumentos[1]) if len(argumentos) > 1 else 1
     mapa.endereco_da_cabine(cabine)
     if parte == "1":
-        _roteiro_partes_1_e_2(contexto)
+        _roteiro_parte_1(contexto)
+    elif parte == "2":
+        _roteiro_parte_2(contexto)
     elif parte == "3":
         _roteiro_parte_3(contexto, cabine)
     elif parte == "tudo":
-        _roteiro_partes_1_e_2(contexto)
+        _roteiro_parte_1(contexto)
+        _roteiro_parte_2(contexto)
         _roteiro_parte_3(contexto, cabine)
     else:
-        raise ValueError("use: roteiro 1 | roteiro 3 [<cabine>] | "
+        raise ValueError("use: roteiro 1 | roteiro 2 | roteiro 3 [<cabine>] | "
                          "roteiro tudo [<cabine>]")
     exibe("\n# fim do roteiro")
 
@@ -394,8 +412,12 @@ def _executa_um(contexto, linha):
             elevadores.atribui_chamada(int(argumentos[0]), int(argumentos[1]))
             exibe("  => chamada %s atribuida a cabine %s" % tuple(argumentos[:2]))
         elif comando == "pop":
-            elevadores.remove_chamada_da_fila()
-            exibe("  => chamada da cabeca removida da fila")
+            removida = elevadores.remove_chamada_da_fila(
+                int(argumentos[0]) if argumentos else None)
+            if removida is None:
+                exibe("  => fila vazia: nada a remover")
+            else:
+                exibe("  => chamada %d removida da fila" % removida)
         elif comando == "contorno":
             _contorno(contexto, argumentos)
         elif comando == "le":

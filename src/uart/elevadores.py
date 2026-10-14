@@ -92,9 +92,29 @@ class Elevadores:
                 "destino": campos["chamada_destino"],
                 "id": campos["chamada_id"]}
 
-    def remove_chamada_da_fila(self):
+    def remove_chamada_da_fila(self, chamada_id=None):
+        """Remove a chamada `chamada_id` da cabeca da fila.
+
+        O pop nao e idempotente: se o simulador remove a chamada e a resposta
+        chega corrompida, repeti-lo removeria tambem a seguinte. Antes de
+        repetir, a cabeca e relida, e se ja nao for `chamada_id` o pop valeu.
+        Sem `chamada_id`, a cabeca e lida antes. Devolve o id removido, ou
+        None se a fila ja estava vazia.
+        """
+        if chamada_id is None:
+            cabeca = self.le_chamada_da_fila()
+            if cabeca is None:
+                return None
+            chamada_id = cabeca["id"]
+
+        def ja_removida():
+            cabeca = self.le_chamada_da_fila()
+            return cabeca is None or cabeca["id"] != chamada_id
+
         self.cliente.escreve_registradores(
-            ENDERECO_DO_PREDIO, REGISTRADOR_CHAMADA_POP, [1])
+            ENDERECO_DO_PREDIO, REGISTRADOR_CHAMADA_POP, [1],
+            ja_aplicada=ja_removida)
+        return chamada_id
 
     def atribui_chamada(self, chamada_id, cabine):
         """Escreve atribuicao_chamada_id e atribuicao_cabine juntos.
