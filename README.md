@@ -59,8 +59,9 @@ São usados os 6 últimos dígitos da matrícula. O programa abre num menu:
 ```
 
 Cada opção mostra o comando executado, os bytes enviados (`TX`) e recebidos
-(`RX`) e os campos decodificados. A Parte 3 pausa para que uma chamada seja
-registrada no quiosque do dashboard.
+(`RX`) e os campos decodificados. A Parte 3 explica cada passo antes de
+executá-lo e, na fila, espera uma chamada ser registrada no quiosque do
+dashboard (qualquer origem e destino) e segue sozinha.
 
 Principais comandos do terminal:
 

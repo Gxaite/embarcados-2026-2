@@ -40,7 +40,7 @@ AJUDA = """
   roteiro 1                     os 6 comandos da Parte 1 e o erro de sintaxe
   roteiro 2                     os 6 comandos da Parte 2
   roteiro 3 [<cabine>]          watchdog e BMP280, porta, fila e excecoes
-                                (pausa para registrar a chamada no quiosque)
+                                (espera a chamada do quiosque)
   roteiro tudo [<cabine>]       as tres em sequencia
 
 ## Terminal
@@ -232,19 +232,30 @@ EXPIRACAO_DO_WATCHDOG_S = 32
 # O fechar vai enquanto ela esta aberta, para o comando aparecer fazendo efeito.
 DURACAO_DA_ABERTURA_S = 3
 DURACAO_DO_FECHAMENTO_S = 5
+# Espera pela chamada do quiosque: uma leitura da fila a cada 3 s, cada uma
+# um evento no widget, por no maximo 3 min.
+INTERVALO_DA_ESPERA_S = 3.0
+ESPERA_DA_CHAMADA_S = 180
 
 
-def _passo(contexto, linha):
-    """Executa um comando do roteiro como se tivesse sido digitado."""
-    exibe("\nuart> %s" % linha)
+def _passo(contexto, linha, aviso=None):
+    """Executa um comando do roteiro como se tivesse sido digitado, depois de
+    explicar o que ele envia e o que se espera."""
+    exibe()
+    if aviso:
+        exibe(aviso)
+    exibe("uart> %s" % linha)
     _executa_um(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
 
-def _consulta(linha, le, imprime):
+def _consulta(linha, le, imprime, aviso=None):
     """Passo do roteiro cujo resultado decide o proximo. Impresso igual ao
     comando digitado; devolve None se a leitura falhar."""
-    exibe("\nuart> %s" % linha)
+    exibe()
+    if aviso:
+        exibe(aviso)
+    exibe("uart> %s" % linha)
     try:
         estado = le()
     except ErroComunicacao as erro:
@@ -257,19 +268,41 @@ def _consulta(linha, le, imprime):
     return estado
 
 
-def _passo_contorno(contexto):
+def _passo_contorno(contexto, aviso):
     """Escrita da Condicao de Contorno; sem BMP280, com valores fixos."""
     _passo(contexto, "contorno" if contexto.sensor is not None
-           else "contorno 25 1013")
+           else "contorno 25 1013", aviso)
 
 
-def _aguarda_enter(mensagem):
-    """Pausa para o que so se faz no dashboard. Sem terminal, segue direto."""
-    exibe(mensagem)
+def _espera_chamada(elevadores):
+    """Le a fila a cada 3 s ate aparecer uma chamada, uma linha por leitura.
+
+    Os bytes dessas leituras nao sao impressos: seriam cinco linhas a cada
+    3 s so para dizer que a fila continua vazia. A leitura que vale aparece
+    depois, como o comando 'fila'.
+    """
+    cliente = elevadores.cliente
+    eco, cliente.eco = cliente.eco, None
+    inicio = time.monotonic()
     try:
-        input()
-    except EOFError:
-        pass
+        while True:
+            try:
+                chamada = elevadores.le_chamada_da_fila()
+            except ErroComunicacao as erro:
+                exibe("  leitura da fila falhou (%s); tentando de novo" % erro)
+                chamada = None
+            decorrido = time.monotonic() - inicio
+            if chamada is not None:
+                exibe("  chamada %d encontrada apos %.0f s: andar %d -> %d"
+                      % (chamada["id"], decorrido, chamada["origem"],
+                         chamada["destino"]))
+                return chamada
+            if decorrido >= ESPERA_DA_CHAMADA_S:
+                return None
+            exibe("  fila vazia, aguardando a chamada... (%.0f s)" % decorrido)
+            time.sleep(INTERVALO_DA_ESPERA_S)
+    finally:
+        cliente.eco = eco
 
 
 def _roteiro_seis_comandos(contexto, protocolo):
@@ -297,57 +330,78 @@ def _roteiro_parte_3(contexto, cabine):
     exibe("\n# 1. watchdog da Condicao de Contorno")
     if servico is not None and servico.ativo:
         servico.para()
-    predio = _consulta("predio", elevadores.le_estado_predio, imprime_predio)
+    predio = _consulta("predio", elevadores.le_estado_predio, imprime_predio,
+                       "# le os 16 registradores do predio (0x20); sem escrita "
+                       "ha mais de 30 s, esperado watchdog = 1 e barramento "
+                       "3000 mA")
     if predio is not None and predio["watchdog_ambiente"] == 0:
         exibe("# watchdog ainda valido; aguardando %d s sem escrita para ele "
               "expirar" % EXPIRACAO_DO_WATCHDOG_S)
         time.sleep(EXPIRACAO_DO_WATCHDOG_S)
-        _passo(contexto, "predio")
+        _passo(contexto, "predio", "# le o predio de novo: agora o watchdog "
+               "deve estar expirado")
     if contexto.sensor is not None:
-        _passo(contexto, "bmp")
-    _passo_contorno(contexto)
-    _passo(contexto, "predio")
+        _passo(contexto, "bmp", "# le temperatura e pressao do BMP280 pelo I2C")
+    _passo_contorno(contexto, "# escreve temperatura (decimos de C) e pressao "
+                    "(hPa) nos registradores 5 e 6 do predio")
+    _passo(contexto, "predio", "# esperado watchdog = 0 e barramento = 12000 - "
+           "200 x (T - 25) mA")
 
     exibe("\n# 2. porta da cabine %d" % cabine)
     estado = _consulta("cabine %d" % cabine,
                        lambda: elevadores.le_estado_cabine(cabine),
-                       lambda e: imprime_cabine(cabine, e))
+                       lambda e: imprime_cabine(cabine, e),
+                       "# le os 9 registradores da cabine %d: ela precisa "
+                       "estar nivelada e com a porta fechada" % cabine)
     if estado is not None and (not estado["nivelado"] or estado["falha"]
                                or estado["porta_estado"]):
         exibe("# AVISO: a cabine %d precisa estar nivelada, sem falha e com a "
               "porta fechada; escolha outra com 'roteiro 3 <cabine>'" % cabine)
-    for acao, duracao_s in (("abrir", DURACAO_DA_ABERTURA_S),
-                            ("fechar", DURACAO_DO_FECHAMENTO_S)):
+    for acao, codigo, duracao_s, esperado in (
+            ("abrir", 1, DURACAO_DA_ABERTURA_S, "fechada -> abrindo -> aberta"),
+            ("fechar", 2, DURACAO_DO_FECHAMENTO_S, "fechando -> fechada")):
         linha = "porta %d %s ; monitora cabine %d %s" % (cabine, acao, cabine,
                                                          duracao_s)
-        exibe("\nuart> %s" % linha)
+        exibe("\n# escreve %d (%s) no registrador 3 da cabine e le a cada 1 s "
+              "por %d s; esperado %s" % (codigo, acao, duracao_s, esperado))
+        exibe("uart> %s" % linha)
         executa(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
     exibe("\n# 3. fila de chamadas")
-    _aguarda_enter("# registre uma chamada no quiosque do dashboard e tecle "
-                   "Enter")
-    exibe("# renova a Condicao de Contorno: a porta e a pausa ja passaram dos "
-          "30 s do watchdog")
-    _passo_contorno(contexto)
-    chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila)
-    if chamada is None:
-        exibe("# fila vazia: registre uma chamada no quiosque e repita "
-              "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine)
+    exibe("# registre uma chamada no quiosque do dashboard (qualquer origem e "
+          "destino); a fila e lida a cada %.0f s e o roteiro segue sozinho"
+          % INTERVALO_DA_ESPERA_S)
+    if _espera_chamada(elevadores) is None:
+        exibe("# nenhuma chamada em %d s: a fila fica para o terminal "
+              "('fila', 'atribui <id> %d', 'pop', 'fila')"
+              % (ESPERA_DA_CHAMADA_S, cabine))
     else:
-        _passo(contexto, "atribui %d %d" % (chamada["id"], cabine))
-        _passo(contexto, "pop %d" % chamada["id"])
-        _passo(contexto, "fila")
+        _passo_contorno(contexto, "# renova a Condicao de Contorno: a porta e "
+                        "a espera ja passaram dos 30 s do watchdog")
+        chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila,
+                            "# le os registradores 0 a 3 do predio: tamanho "
+                            "da fila e a chamada da cabeca")
+        if chamada is not None:
+            _passo(contexto, "atribui %d %d" % (chamada["id"], cabine),
+                   "# escreve id %d e cabine %d nos registradores 9 e 10"
+                   % (chamada["id"], cabine))
+            _passo(contexto, "pop %d" % chamada["id"],
+                   "# escreve 1 no registrador 4: remove a chamada da cabeca")
+            _passo(contexto, "fila", "# le a fila de novo: a chamada %d nao "
+                   "deve mais estar na cabeca" % chamada["id"])
 
-    exibe("\n# 4. excecoes 0x02: registrador somente leitura e faixa fora do mapa")
-    _passo(contexto, "escreve 0x11 0 5")
-    _passo(contexto, "le 0x11 0 20")
+    exibe("\n# 4. excecoes")
+    _passo(contexto, "escreve 0x11 0 5", "# escreve no registrador 0 da "
+           "cabine 1, que e somente leitura: esperado excecao 0x02")
+    _passo(contexto, "le 0x11 0 20", "# le 20 registradores da cabine 1, que "
+           "so tem 9: esperado excecao 0x02")
 
     if servico is not None:
-        exibe("\n# 5. Condicao de Contorno automatica, para o watchdog nao "
-              "expirar de novo")
-        _passo(contexto, "auto on")
-        _passo(contexto, "predio")
+        exibe("\n# 5. Condicao de Contorno automatica")
+        _passo(contexto, "auto on", "# liga a escrita da temperatura a cada "
+               "4 s, para o watchdog nao expirar de novo")
+        _passo(contexto, "predio", "# esperado watchdog = 0")
 
 
 def _roteiro(contexto, argumentos):
