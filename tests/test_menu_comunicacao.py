@@ -71,8 +71,8 @@ def test_parte_3_executa_a_demonstracao(contexto, esp32, monkeypatch, capsys):
     monkeypatch.setattr(cli, "DURACAO_DA_ABERTURA_S", 0.05)
     monkeypatch.setattr(cli, "DURACAO_DO_FECHAMENTO_S", 0.05)
     esp32.registra_chamada(0, 4)
-    # Cabine 4 e recusada; a 2; a chamada ja esta na fila; sai.
-    _digita(monkeypatch, "3", "4", "2", "0")
+    # Cabine 4 e recusada; a 2; Enter na pausa do quiosque; sai.
+    _digita(monkeypatch, "3", "4", "2", "", "0")
     menu.navega(contexto)
     saida = capsys.readouterr().out
     assert "cabine e 1, 2 ou 3" in saida

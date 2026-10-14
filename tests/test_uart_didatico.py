@@ -232,36 +232,3 @@ def test_roteiros_1_e_2_separados(porta, monkeypatch, capsys):
     assert "uart> p1 " not in saida
     assert "erro no comando" not in saida
 
-
-def test_roteiro_espera_a_chamada_do_quiosque(porta, monkeypatch, capsys):
-    from src import cli_comunicacao as cli
-    from src.uart import modbus
-    from src.uart.elevadores import Elevadores
-    monkeypatch.setattr(cli, "INTERVALO_DA_ESPERA_S", 0)
-    elevadores = Elevadores(modbus.ClienteModbus(porta, MATRICULA,
-                                                 eco=lambda t: print(t)))
-    leituras = []
-    le = elevadores.le_chamada_da_fila
-
-    def le_e_registra_na_terceira():
-        leituras.append(1)
-        if len(leituras) == 3:
-            porta.dispositivo.registra_chamada(2, 5)
-        return le()
-    elevadores.le_chamada_da_fila = le_e_registra_na_terceira
-
-    chamada = cli._espera_chamada(elevadores)
-    saida = capsys.readouterr().out
-    assert chamada["origem"] == 2 and chamada["destino"] == 5
-    assert saida.count("fila vazia, aguardando") == 2
-    assert "TX (" not in saida          # leituras da espera sem bytes
-    assert elevadores.cliente.eco is not None
-
-
-def test_roteiro_desiste_da_chamada_apos_o_prazo(porta, monkeypatch):
-    from src import cli_comunicacao as cli
-    from src.uart import modbus
-    from src.uart.elevadores import Elevadores
-    monkeypatch.setattr(cli, "ESPERA_DA_CHAMADA_S", 0)
-    elevadores = Elevadores(modbus.ClienteModbus(porta, MATRICULA, eco=None))
-    assert cli._espera_chamada(elevadores) is None

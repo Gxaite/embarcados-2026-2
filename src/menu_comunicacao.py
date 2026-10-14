@@ -47,6 +47,9 @@ def _cabine(texto):
 
 
 def _pergunta_cabine():
+    exibe("# escolha a cabine da demonstracao: e nela que a porta abre e fecha "
+          "e a quem a chamada do quiosque e atribuida; precisa estar nivelada "
+          "e com a porta fechada (Enter = 1)")
     return _pergunta("cabine (1-3)", "1", _cabine)
 
 

@@ -40,7 +40,7 @@ AJUDA = """
   roteiro 1                     os 6 comandos da Parte 1 e o erro de sintaxe
   roteiro 2                     os 6 comandos da Parte 2
   roteiro 3 [<cabine>]          watchdog e BMP280, porta, fila e excecoes
-                                (espera a chamada do quiosque)
+                                (pausa ate Enter para a chamada do quiosque)
   roteiro tudo [<cabine>]       as tres em sequencia
 
 ## Terminal
@@ -232,10 +232,6 @@ EXPIRACAO_DO_WATCHDOG_S = 32
 # O fechar vai enquanto ela esta aberta, para o comando aparecer fazendo efeito.
 DURACAO_DA_ABERTURA_S = 3
 DURACAO_DO_FECHAMENTO_S = 5
-# Espera pela chamada do quiosque: uma leitura da fila a cada 3 s, cada uma
-# um evento no widget, por no maximo 3 min.
-INTERVALO_DA_ESPERA_S = 3.0
-ESPERA_DA_CHAMADA_S = 180
 
 
 def _passo(contexto, linha, aviso=None):
@@ -274,35 +270,13 @@ def _passo_contorno(contexto, aviso):
            else "contorno 25 1013", aviso)
 
 
-def _espera_chamada(elevadores):
-    """Le a fila a cada 3 s ate aparecer uma chamada, uma linha por leitura.
-
-    Os bytes dessas leituras nao sao impressos: seriam cinco linhas a cada
-    3 s so para dizer que a fila continua vazia. A leitura que vale aparece
-    depois, como o comando 'fila'.
-    """
-    cliente = elevadores.cliente
-    eco, cliente.eco = cliente.eco, None
-    inicio = time.monotonic()
+def _aguarda_enter(mensagem):
+    """Pausa para o que so se faz no dashboard. Sem terminal, segue direto."""
+    exibe(mensagem)
     try:
-        while True:
-            try:
-                chamada = elevadores.le_chamada_da_fila()
-            except ErroComunicacao as erro:
-                exibe("  leitura da fila falhou (%s); tentando de novo" % erro)
-                chamada = None
-            decorrido = time.monotonic() - inicio
-            if chamada is not None:
-                exibe("  chamada %d encontrada apos %.0f s: andar %d -> %d"
-                      % (chamada["id"], decorrido, chamada["origem"],
-                         chamada["destino"]))
-                return chamada
-            if decorrido >= ESPERA_DA_CHAMADA_S:
-                return None
-            exibe("  fila vazia, aguardando a chamada... (%.0f s)" % decorrido)
-            time.sleep(INTERVALO_DA_ESPERA_S)
-    finally:
-        cliente.eco = eco
+        input()
+    except EOFError:
+        pass
 
 
 def _roteiro_seis_comandos(contexto, protocolo):
@@ -369,27 +343,24 @@ def _roteiro_parte_3(contexto, cabine):
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
     exibe("\n# 3. fila de chamadas")
-    exibe("# registre uma chamada no quiosque do dashboard (qualquer origem e "
-          "destino); a fila e lida a cada %.0f s e o roteiro segue sozinho"
-          % INTERVALO_DA_ESPERA_S)
-    if _espera_chamada(elevadores) is None:
-        exibe("# nenhuma chamada em %d s: a fila fica para o terminal "
-              "('fila', 'atribui <id> %d', 'pop', 'fila')"
-              % (ESPERA_DA_CHAMADA_S, cabine))
+    _aguarda_enter("# registre uma chamada no quiosque do dashboard (qualquer "
+                   "origem e destino) e tecle Enter")
+    _passo_contorno(contexto, "# renova a Condicao de Contorno: a porta e a "
+                    "pausa ja passaram dos 30 s do watchdog")
+    chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila,
+                        "# le os registradores 0 a 3 do predio: tamanho da "
+                        "fila e a chamada da cabeca")
+    if chamada is None:
+        exibe("# fila vazia: registre uma chamada no quiosque e repita "
+              "'fila', 'atribui <id> %d', 'pop', 'fila'" % cabine)
     else:
-        _passo_contorno(contexto, "# renova a Condicao de Contorno: a porta e "
-                        "a espera ja passaram dos 30 s do watchdog")
-        chamada = _consulta("fila", elevadores.le_chamada_da_fila, imprime_fila,
-                            "# le os registradores 0 a 3 do predio: tamanho "
-                            "da fila e a chamada da cabeca")
-        if chamada is not None:
-            _passo(contexto, "atribui %d %d" % (chamada["id"], cabine),
-                   "# escreve id %d e cabine %d nos registradores 9 e 10"
-                   % (chamada["id"], cabine))
-            _passo(contexto, "pop %d" % chamada["id"],
-                   "# escreve 1 no registrador 4: remove a chamada da cabeca")
-            _passo(contexto, "fila", "# le a fila de novo: a chamada %d nao "
-                   "deve mais estar na cabeca" % chamada["id"])
+        _passo(contexto, "atribui %d %d" % (chamada["id"], cabine),
+               "# escreve id %d e cabine %d nos registradores 9 e 10"
+               % (chamada["id"], cabine))
+        _passo(contexto, "pop %d" % chamada["id"],
+               "# escreve 1 no registrador 4: remove a chamada da cabeca")
+        _passo(contexto, "fila", "# le a fila de novo: a chamada %d nao "
+               "deve mais estar na cabeca" % chamada["id"])
 
     exibe("\n# 4. excecoes")
     _passo(contexto, "escreve 0x11 0 5", "# escreve no registrador 0 da "
