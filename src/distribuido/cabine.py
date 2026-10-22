@@ -24,6 +24,7 @@ from ..controle.cortina import Cortina
 from ..controle.motor import Motor
 from ..gpio.encoder import EncoderQuadratura
 from ..rede import protocolo as p
+from .. import tempo_real
 from ..rede.servidor import ServidorTCP
 from . import malha as malha_mod
 from .bandeirola import SensorDeAndar
@@ -61,7 +62,7 @@ def _imprime(texto):
 
 class ServidorDistribuido:
     def __init__(self, configuracao, backend, eco=_imprime, registro_pid=None,
-                 relogio=time.monotonic):
+                 relogio=time.monotonic, tempo_real_ativo=False):
         self.numero = configuracao["cabine"]
         self.configuracao = configuracao
         self._backend = backend
@@ -88,7 +89,8 @@ class ServidorDistribuido:
         self.itinerario = Itinerario()
         self.calibracao = Calibracao(self.malha, self.encoder, self._pede_andar_atual,
                                      configuracao["duty_de_calibracao"], eco=self._log,
-                                     relogio=relogio)
+                                     relogio=relogio,
+                                     dentro_da_bandeirola=lambda: self.sensor.dentro)
         self.mapa = None
         self.modo = AGUARDANDO_CENTRAL
         self.registradores = {}
@@ -106,6 +108,11 @@ class ServidorDistribuido:
                                endereco=configuracao["tcp_endereco"],
                                nome="cabine%d" % self.numero)
         self._encerrar = threading.Event()
+        # Malha em tempo absoluto (src/tempo_real.py). A prioridade de tempo
+        # real so e pedida no processo da placa: no simulador as tres cabines
+        # dividem um processo.
+        self.periodo = tempo_real.LacoPeriodico(malha_mod.PERIODO_S, self._encerrar)
+        self.tempo_real = tempo_real_ativo
         self._threads = [
             threading.Thread(target=self._laco_de_controle, daemon=True,
                              name="controle%d" % self.numero),
@@ -126,13 +133,17 @@ class ServidorDistribuido:
 
     # ============================================================ controle
     def _laco_de_controle(self):
-        while not self._encerrar.wait(malha_mod.PERIODO_S):
-            try:
-                with self._trava:
-                    self._ciclo()
-            except Exception as erro:              # a malha nao pode morrer
-                self._log("ERRO no ciclo de controle: %r" % (erro,))
-                self.malha.para()
+        if self.tempo_real:
+            self._log(tempo_real.eleva_prioridade())
+        self.periodo.roda(self._ciclo_protegido)
+
+    def _ciclo_protegido(self):
+        try:
+            with self._trava:
+                self._ciclo()
+        except Exception as erro:                  # a malha nao pode morrer
+            self._log("ERRO no ciclo de controle: %r" % (erro,))
+            self.malha.para()
 
     def _ciclo(self):
         self._expira_pedidos()
@@ -445,6 +456,8 @@ class ServidorDistribuido:
                 "reancoragens": self.reancoragens,
                 "ultima_correcao_mm": round(self.ultima_correcao_mm, 1),
                 "falha": self.malha.falha,
+                "atraso_maximo_ms": round(self.periodo.atraso_maximo_s * 1000, 1),
+                "ciclos_perdidos": self.periodo.ciclos_perdidos,
                 "mapa": None if self.mapa is None else self.mapa.resumo(),
             }
 
@@ -460,6 +473,9 @@ class ServidorDistribuido:
     def finaliza(self):
         """SIGINT: PWM em zero, direcao em freio, GPIO e TCP liberados."""
         self._encerrar.set()
+        self._log("malha: %d ciclos, atraso medio %.2f ms, maximo %.2f ms, %d perdidos"
+                  % (self.periodo.ciclos, self.periodo.atraso_medio_s * 1000,
+                     self.periodo.atraso_maximo_s * 1000, self.periodo.ciclos_perdidos))
         for thread in self._threads:
             if thread.is_alive() and thread is not threading.current_thread():
                 thread.join(timeout=1.0)

@@ -95,6 +95,10 @@ def linhas_do_painel(resumo, largura=110):
             _ou(estado.get("duty"), "%.0f%%"),
             " ".join(str(a) for a in estado.get("paradas", [])) or "-")
         estilo = {"operando": "ok", "degradado": "erro"}.get(estado.get("modo"), "alerta")
+        if estado.get("atraso_maximo_ms") is not None:
+            texto += "  malha +%.0fms" % estado["atraso_maximo_ms"]
+            if estado.get("ciclos_perdidos"):
+                texto += " (%d perdidos)" % estado["ciclos_perdidos"]
         if estado.get("falha"):
             texto += "  FALHA: %s" % estado["falha"][:40]
             estilo = "erro"

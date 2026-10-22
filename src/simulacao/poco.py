@@ -78,6 +78,7 @@ class CabineFisica:
         self.porta_comando = 0
         self._porta_desde = 0.0
         self.falha = 0
+        self.sem_energia = False       # barramento em sobrecarga (predio.py)
         self.violacoes = []          # (instante, descricao)
         self.passageiros = 0
 
@@ -142,6 +143,8 @@ class CabineFisica:
             dir2 = self.niveis[self.pinagem["DIR2"]]
             duty = self.duty
         sentido = {(1, 0): 1.0, (0, 1): -1.0}.get((dir1, dir2), 0.0)
+        if self.sem_energia:
+            sentido = 0.0
         if sentido == 0.0 or (self.parada() and duty < DUTY_DE_ARRANQUE):
             alvo = 0.0
         else:

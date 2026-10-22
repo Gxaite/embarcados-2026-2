@@ -27,6 +27,11 @@ from .mapa import ANDARES, ErroDeCalibracao, MapaDeAndares
 
 TEMPO_PARADA_ANTES_DE_INVERTER_S = 0.5
 PRAZO_DA_RESPOSTA_DO_ANDAR_S = 3.0
+# Travamento no meio do poco: espera e tenta de novo. Medido na bancada
+# (22/10/2026, sem BMP280): com o barramento no piso de 3000 mA e as tres
+# cabines calibrando juntas, elas paravam em posicoes aleatorias.
+ESPERA_PARA_RETOMAR_S = 2.0
+RETOMADAS_MAXIMAS = 8
 
 INICIO, AO_FUNDO, SUBIDA, DESCIDA, CONCLUIDA, FALHOU = (
     "inicio", "descendo ao poco", "varredura de subida", "varredura de descida",
@@ -46,14 +51,18 @@ class _Travessia:
 
 class Calibracao:
     def __init__(self, malha, encoder, pede_andar_atual, duty, eco=None,
-                 relogio=time.monotonic):
+                 relogio=time.monotonic, dentro_da_bandeirola=lambda: False):
         self._malha = malha
         self._encoder = encoder
         self._pede_andar_atual = pede_andar_atual
         self.duty = duty
         self._eco = eco or (lambda _texto: None)
         self._relogio = relogio
+        self._dentro = dentro_da_bandeirola
         self.fase = None
+        self._conferindo_travamento = False
+        self._retomar_em = None
+        self.retomadas = 0
         self.mapa = None
         self.erro = None
         self._travessias = {SUBIDA: [], DESCIDA: [], AO_FUNDO: []}
@@ -75,6 +84,9 @@ class Calibracao:
         self._aberta = None
         self._andar_inicial = None
         self._parando = False
+        self._conferindo_travamento = False
+        self._retomar_em = None
+        self.retomadas = 0
         self._pedido_desde = self._relogio()
         self._pede_andar_atual(self._recebe_andar_inicial)
         self._eco("CALIBRACAO: iniciada, perguntando o andar atual ao central")
@@ -138,12 +150,18 @@ class Calibracao:
         if self._parando:
             self._espera_parar()
             return
+        if self._conferindo_travamento:
+            return
+        if self._retomar_em is not None:
+            if self._relogio() >= self._retomar_em:
+                self._retomar_em = None
+                self._malha.anda(self._sentido_da_fase(), self.duty)
+            return
         if self._malha.falha:
-            # Travou contra o fim do poco: so acontece se a cabine comecou
-            # abaixo da bandeirola do andar 0 (ou acima da do 5).
-            self._eco("CALIBRACAO: %s; tratando como fim do poco" % self._malha.falha)
+            self._eco("CALIBRACAO: %s; conferindo o andar" % self._malha.falha)
             self._malha.falha = None
-            self._fim_da_fase()
+            self._conferindo_travamento = True
+            self._pede_andar_atual(self._confere_travamento)
             return
         alvo = ANDARES[-1] if self.fase == SUBIDA else ANDARES[0]
         completas = [t for t in self._travessias[self.fase]
@@ -153,6 +171,33 @@ class Calibracao:
         elif self.fase == SUBIDA and len([t for t in completas if t.completa]) \
                 >= len(ANDARES):
             self._fim_da_fase()
+
+    def _sentido_da_fase(self):
+        return 1 if self.fase == SUBIDA else -1
+
+    def _confere_travamento(self, andar):
+        """Travou: e o fim do poco, ou parou no meio do caminho?
+
+        So e fim se a cabine esta no andar extremo do sentido e ja fora da
+        bandeirola dele (o poco tem 400 mm alem do andar, mais que meia
+        bandeirola). Senao a varredura e retomada no mesmo sentido."""
+        self._conferindo_travamento = False
+        if self.fase not in (AO_FUNDO, SUBIDA, DESCIDA):
+            return
+        extremo = ANDARES[-1] if self.fase == SUBIDA else ANDARES[0]
+        if andar == extremo and not self._dentro():
+            self._eco("CALIBRACAO: fim do poco no andar %d" % andar)
+            self._fim_da_fase()
+            return
+        self.retomadas += 1
+        if self.retomadas > RETOMADAS_MAXIMAS:
+            self._falha("%d travamentos no meio do poco; o motor nao vence a carga "
+                        "com o duty de calibracao (barramento no piso?)" % self.retomadas)
+            return
+        self._eco("CALIBRACAO: travou perto do andar %s, longe do fim do poco; "
+                  "retomando em %.0f s (%d/%d)" % (andar, ESPERA_PARA_RETOMAR_S,
+                                                    self.retomadas, RETOMADAS_MAXIMAS))
+        self._retomar_em = self._relogio() + ESPERA_PARA_RETOMAR_S
 
     def _fim_da_fase(self):
         self._malha.para()

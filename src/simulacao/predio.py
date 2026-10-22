@@ -55,6 +55,7 @@ class Esp32Predio(Esp32Simulada):
         self._trava_das_chamadas = threading.RLock()
         self.cenario_ativo = 0
         self._cenario_inicio = None
+        self.sobrecargas = 0           # passos da fisica com o barramento estourado
         self._parar = threading.Event()
         self._fisica = threading.Thread(target=self._laco_da_fisica, daemon=True,
                                         name="fisica-do-predio")
@@ -130,7 +131,15 @@ class Esp32Predio(Esp32Simulada):
         while not self._parar.wait(PASSO_DA_FISICA_S):
             agora = time.monotonic()
             dt, anterior = agora - anterior, agora
+            # Sobrecarga: a soma das correntes acima da capacidade derruba o
+            # barramento, e nenhum motor tem torque enquanto ela durar. E a
+            # hipotese para os travamentos vistos na bancada sem BMP280.
+            total = sum(f.corrente_ma for f in self.fisicas.values())
+            sobrecarga = total > self.barramento_max_ma() + 1
+            if sobrecarga:
+                self.sobrecargas += 1
             for numero, fisica in self.fisicas.items():
+                fisica.sem_energia = sobrecarga
                 fisica.dispara(fisica.passo(dt, agora))
                 with fisica.trava:
                     abriu = fisica.atualiza_porta(agora)

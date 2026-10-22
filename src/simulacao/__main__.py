@@ -45,7 +45,7 @@ PASTA_DE_DADOS = os.path.join(configuracao.RAIZ, "dados", "simulacao")
 
 def monta(eco=None, perda_de_transicoes=0.0, andares_iniciais=(0, 0, 0),
           registra_pid=False, pasta=PASTA_DE_DADOS, temperatura_c=27.0,
-          deslocamento_de_portas=0):
+          deslocamento_de_portas=0, sem_bmp280=False):
     """Cria predio, cabines e central. Devolve um dicionario com tudo.
 
     deslocamento_de_portas soma as portas TCP dos arquivos de configuracao,
@@ -64,8 +64,9 @@ def monta(eco=None, perda_de_transicoes=0.0, andares_iniciais=(0, 0, 0),
         cabine["porta"] += deslocamento_de_portas
     servidor = ServidorCentral(central_cfg, elevadores, eco=eco)
     barramento_i2c = BarramentoBMP280Simulado(temperatura_c=temperatura_c, pressao_hpa=887.0)
-    servidor.contorno = ServicoCondicaoContorno(bmp280.BMP280(barramento_i2c), elevadores,
-                                                eco=servidor.log)
+    if not sem_bmp280:
+        servidor.contorno = ServicoCondicaoContorno(bmp280.BMP280(barramento_i2c),
+                                                    elevadores, eco=servidor.log)
     cabines, registros = {}, []
     for numero in (1, 2, 3):
         cfg = configuracao.le_cabine(configuracao.arquivo_da_cabine(numero))

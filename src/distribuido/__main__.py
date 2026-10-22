@@ -12,7 +12,7 @@ import signal
 import sys
 import threading
 
-from .. import configuracao
+from .. import configuracao, tempo_real
 from .cabine import ServidorDistribuido
 from .registro_pid import RegistroPID
 
@@ -34,8 +34,10 @@ def main(argv=None):
         parser.error(str(erro))
 
     from ..gpio.rpi_backend import BackendRPi
+    print(tempo_real.trava_memoria(), flush=True)
     registro = RegistroPID(args.registra_pid) if args.registra_pid else None
-    servidor = ServidorDistribuido(config, BackendRPi(), registro_pid=registro)
+    servidor = ServidorDistribuido(config, BackendRPi(), registro_pid=registro,
+                                   tempo_real_ativo=True)
 
     terminou = threading.Event()
     encerrando = {"sim": False}

@@ -34,6 +34,34 @@ def mapa_regular(deslocamento=0.0, largura=100.0):
     return MapaDeAndares(bordas)
 
 
+# ---------------------------------------------------------- tempo real
+def test_laco_periodico_em_tempo_absoluto_pula_ciclos_perdidos():
+    import threading
+    import time as tempo
+    from src.tempo_real import LacoPeriodico
+    encerrar = threading.Event()
+    laco = LacoPeriodico(0.02, encerrar)
+    instantes = []
+
+    def ciclo():
+        instantes.append(tempo.monotonic())
+        if len(instantes) == 3:
+            tempo.sleep(0.07)          # ciclo lento: perde 3 periodos
+        if len(instantes) == 10:
+            encerrar.set()
+
+    laco.roda(ciclo)
+    assert laco.ciclos_perdidos >= 3
+    # Depois do atraso nao ha rajada: o intervalo seguinte nao e quase zero.
+    intervalos = [b - a for a, b in zip(instantes, instantes[1:])]
+    assert min(intervalos[3:]) > 0.01
+    # Tempo absoluto: os ciclos caem na grade de 20 ms, sem deriva.
+    inicio = instantes[0]
+    for instante in instantes[4:]:
+        fase = ((instante - inicio) / 0.02) % 1.0
+        assert min(fase, 1 - fase) < 0.25
+
+
 # ---------------------------------------------------------------- PID
 def test_pid_satura_na_cota():
     pid = PID(0.5, 0.05, 5.0)
