@@ -251,7 +251,20 @@ no mesmo ciclo e nunca o ultrapassa:
 Sistema completo, três cenários de 5 minutos, com semente fixa e uma chamada a
 cada 5 s em média (`python3 -m ferramentas.experimentos cenarios`):
 
-Resultados da rodada no simulador: em atualização (`docs/experimentos/cenarios.json`).
+| Cenário | Chamadas | Espera média | Espera máxima | Viagem média | Por cabine (1/2/3) |
+|:--|:-:|:-:|:-:|:-:|:-:|
+| Up-peak | 50 | 22,7 s | 76,7 s | 37,5 s | 15 / 16 / 19 |
+| Down-peak | 52 | 27,6 s | **95,5 s** | 35,6 s | 16 / 19 / 17 |
+| Interfloor | 46 | 18,9 s | 73,4 s | 41,4 s | 15 / 15 / 16 |
+
+Nenhuma violação de porta, de fim de curso, de Cota ou de barramento nos três
+(`docs/experimentos/cenarios.json`). No down-peak uma chamada passou dos 90 s:
+a proteção do limite (penalidade no despacho e prioridade, na cabine, para
+origem esperando há mais de 50 s) derrubou o pior caso do interfloor de 98 s
+para 73 s, mas não cobre todos os casos com a velocidade do simulador. Estes
+números são do simulador; os da bancada dependem da velocidade real do motor.
+
+![Barramento de Potência](docs/imagens/potencia.png)
 
 ## Estrutura
 

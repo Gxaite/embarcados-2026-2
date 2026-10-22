@@ -1,0 +1,50 @@
+{
+  "up-peak": {
+    "chamadas": 50,
+    "espera_media_s": 22.673603033440084,
+    "espera_maxima_s": 76.66370430799998,
+    "viagem_media_s": 37.46593223327991,
+    "por_cabine": {
+      "1": 15,
+      "2": 16,
+      "3": 19
+    }
+  },
+  "down-peak": {
+    "chamadas": 52,
+    "espera_media_s": 27.606730045038464,
+    "espera_maxima_s": 95.5051525859999,
+    "viagem_media_s": 35.62874362782699,
+    "por_cabine": {
+      "1": 16,
+      "2": 19,
+      "3": 17
+    }
+  },
+  "interfloor": {
+    "chamadas": 46,
+    "espera_media_s": 18.89600140413048,
+    "espera_maxima_s": 73.4286836049996,
+    "viagem_media_s": 41.36101583091299,
+    "por_cabine": {
+      "1": 15,
+      "2": 15,
+      "3": 16
+    }
+  },
+  "violacoes": {
+    "1": [],
+    "2": [],
+    "3": []
+  },
+  "reancoragens": {
+    "1": 66,
+    "2": 68,
+    "3": 71
+  },
+  "transicoes_perdidas": {
+    "1": 50,
+    "2": 60,
+    "3": 62
+  }
+}
