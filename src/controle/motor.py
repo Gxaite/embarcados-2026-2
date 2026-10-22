@@ -13,10 +13,11 @@ DUTY_MINIMO_DE_MOVIMENTO = 10.0  # abaixo disso o motor parado nao arranca
 
 
 class Motor:
-    def __init__(self, backend):
-        self._dir1 = SaidaDigital(backend, pinos.DIR1, 0)
-        self._dir2 = SaidaDigital(backend, pinos.DIR2, 0)
-        self._pwm = SaidaPWM(backend, pinos.PWM)
+    def __init__(self, backend, pinagem=None):
+        pinagem = pinagem or pinos.atual()
+        self._dir1 = SaidaDigital(backend, pinagem["DIR1"], 0)
+        self._dir2 = SaidaDigital(backend, pinagem["DIR2"], 0)
+        self._pwm = SaidaPWM(backend, pinagem["PWM"])
         self._direcao = pinos.LIVRE
         self._alvo_de_duty = 0.0
 

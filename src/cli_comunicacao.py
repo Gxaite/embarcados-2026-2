@@ -226,7 +226,10 @@ def _contorno(contexto, argumentos):
 # 40 s, entao o roteiro evita trafego que ninguem ve: toda consulta dele e um
 # comando impresso, e a escrita automatica (2 eventos a cada 4 s) so liga no
 # final.
-PAUSA_DO_ROTEIRO_S = 3.0
+PAUSA_DO_ROTEIRO_S = 4.0
+# Entre mostrar o comentario e o comando e de fato enviar: tempo de explicar
+# o passo antes de os bytes aparecerem (e de olhar o log da ESP32).
+PAUSA_ANTES_DO_COMANDO_S = 2.0
 EXPIRACAO_DO_WATCHDOG_S = 32
 # A porta do simulador leva ~2 s abrindo, fica ~3 s aberta e fecha sozinha.
 # O fechar vai enquanto ela esta aberta, para o comando aparecer fazendo efeito.
@@ -234,13 +237,20 @@ DURACAO_DA_ABERTURA_S = 3
 DURACAO_DO_FECHAMENTO_S = 5
 
 
-def _passo(contexto, linha, aviso=None):
-    """Executa um comando do roteiro como se tivesse sido digitado, depois de
-    explicar o que ele envia e o que se espera."""
+def anuncia(linha, aviso=None):
+    """Mostra o comentario e o comando como se tivesse sido digitado, e
+    espera um pouco antes de envia-lo. Usado pelo roteiro e pelo menu."""
     exibe()
     if aviso:
         exibe(aviso)
     exibe("uart> %s" % linha)
+    time.sleep(PAUSA_ANTES_DO_COMANDO_S)
+
+
+def _passo(contexto, linha, aviso=None):
+    """Executa um comando do roteiro como se tivesse sido digitado, depois de
+    explicar o que ele envia e o que se espera."""
+    anuncia(linha, aviso)
     _executa_um(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 
@@ -248,10 +258,7 @@ def _passo(contexto, linha, aviso=None):
 def _consulta(linha, le, imprime, aviso=None):
     """Passo do roteiro cujo resultado decide o proximo. Impresso igual ao
     comando digitado; devolve None se a leitura falhar."""
-    exibe()
-    if aviso:
-        exibe(aviso)
-    exibe("uart> %s" % linha)
+    anuncia(linha, aviso)
     try:
         estado = le()
     except ErroComunicacao as erro:
@@ -336,9 +343,9 @@ def _roteiro_parte_3(contexto, cabine):
             ("fechar", 2, DURACAO_DO_FECHAMENTO_S, "fechando -> fechada")):
         linha = "porta %d %s ; monitora cabine %d %s" % (cabine, acao, cabine,
                                                          duracao_s)
-        exibe("\n# escreve %d (%s) no registrador 3 da cabine e le a cada 1 s "
-              "por %d s; esperado %s" % (codigo, acao, duracao_s, esperado))
-        exibe("uart> %s" % linha)
+        anuncia(linha, "# escreve %d (%s) no registrador 3 da cabine e le a "
+                "cada 1 s por %d s; esperado %s"
+                % (codigo, acao, duracao_s, esperado))
         executa(contexto, linha)
     time.sleep(PAUSA_DO_ROTEIRO_S)
 

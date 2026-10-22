@@ -5,3 +5,6 @@ __pycache__/
 
 # Matricula usada nos quadros da UART (Entrega 2). O repositorio e publico.
 /matricula
+
+# Estado, logs e calibracoes gravados pelos processos da Entrega Final.
+/dados/

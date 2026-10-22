@@ -33,6 +33,23 @@ PINAGENS = {
     },
 }
 
+# Tabela 1 completa, uma pinagem por cabine. A Cabine 1 e a "nova" acima.
+# Os Servidores Distribuidos leem os pinos do arquivo de configuracao; esta
+# tabela e a referencia contra a qual o arquivo e conferido.
+PINAGENS_DAS_CABINES = {
+    1: PINAGENS["nova"],
+    2: {
+        "PWM": 11, "DIR1": 17, "DIR2": 27,
+        "ENC_A": 5, "ENC_B": 6,
+        "CORTINA": 16, "SENSOR_ANDAR": 12,
+    },
+    3: {
+        "PWM": 18, "DIR1": 24, "DIR2": 25,
+        "ENC_A": 7, "ENC_B": 8,
+        "CORTINA": 19, "SENSOR_ANDAR": 1,
+    },
+}
+
 # BCM -> pino fisico no header de 40 pinos. Serve para conferencia visual.
 _FISICO = {
     0: 27, 1: 28, 5: 29, 6: 31, 7: 26, 8: 24, 11: 23, 12: 32, 13: 33,
@@ -72,6 +89,22 @@ pinagem_em_uso = None
 PWM = DIR1 = DIR2 = ENC_A = ENC_B = CORTINA = SENSOR_ANDAR = None
 PINO_FISICO = {}
 NOME = {}
+
+
+def atual():
+    """Pinagem ativa como dicionario sinal -> BCM (Entregas 1 e 2)."""
+    return {sinal: globals()[sinal] for sinal in SINAIS}
+
+
+def valida(pinagem):
+    """Confere que a pinagem tem os 7 sinais e nenhum pino repetido."""
+    faltando = [s for s in SINAIS if s not in pinagem]
+    if faltando:
+        raise ValueError("pinagem sem os sinais: %s" % ", ".join(faltando))
+    usados = [int(pinagem[s]) for s in SINAIS]
+    if len(set(usados)) != len(usados):
+        raise ValueError("pinagem com pino repetido: %s" % usados)
+    return {s: int(pinagem[s]) for s in SINAIS}
 
 
 def aplica(nome="nova"):

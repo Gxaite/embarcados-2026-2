@@ -84,6 +84,14 @@ class BackendFalso(Backend):
             callback(pino, valor)
 
 
+@pytest.fixture(autouse=True)
+def sem_pausas_de_apresentacao(monkeypatch):
+    """As pausas existem para quem assiste; nos testes so atrasam."""
+    from src import cli_comunicacao
+    monkeypatch.setattr(cli_comunicacao, "PAUSA_DO_ROTEIRO_S", 0)
+    monkeypatch.setattr(cli_comunicacao, "PAUSA_ANTES_DO_COMANDO_S", 0)
+
+
 @pytest.fixture
 def backend():
     return BackendFalso()

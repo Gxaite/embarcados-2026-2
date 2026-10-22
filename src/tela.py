@@ -20,6 +20,7 @@ AMARELO = "33"
 AZUL = "34"
 MAGENTA = "35"
 CIANO = "36"
+AMARELO_CLARO = "93"
 
 _ativa = sys.stdout.isatty() and "NO_COLOR" not in os.environ
 
@@ -39,7 +40,7 @@ _REGRAS = (
     ("[CONTORNO]", None, MAGENTA, ""),
     ("[", "]", NEGRITO, NEGRITO),
     ("uart>", None, CIANO + ";" + NEGRITO, NEGRITO),
-    ("#", None, AZUL + ";" + NEGRITO, AZUL + ";" + NEGRITO),
+    ("#", None, AMARELO_CLARO + ";" + NEGRITO, AMARELO_CLARO + ";" + NEGRITO),
     ("AVISO", None, AMARELO + ";" + NEGRITO, AMARELO),
 )
 

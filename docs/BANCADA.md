@@ -178,3 +178,49 @@ não mostra nada, está no envio.
 | `Permission denied` em `/dev/serial0` ou `/dev/i2c-1` | usuário fora dos grupos `dialout` ou `i2c` |
 | `Remote I/O error` no BMP280 | sensor ausente no endereço `0x76`; conferir `i2cdetect` |
 | `watchdog_ambiente` volta a 1 | escrita automática desligada; `auto on` ou `--contorno-auto` |
+
+## 8. Entrega Final
+
+Os quatro processos rodam na mesma placa, dentro do `tmux` (seção 1):
+
+```bash
+git pull
+ferramentas/sobe_tudo.sh --registra
+```
+
+Roteiro de verificação, na ordem:
+
+1. **Conexão**: no painel do central as três cabines aparecem `ok`; derrubar
+   uma cabine com Ctrl+C e subi-la de novo na janela dela deve voltar a `ok`
+   em até 2 s, sem mexer nas outras.
+2. **Barramento**: `barramento_max_ma` coerente com a temperatura do BMP280
+   (12000 − 200 × (T − 25)) e watchdog `OK`. Sem BMP280 na placa, o watchdog
+   expira e as cabines andam a 1000 mA.
+3. **Calibração**: cada cabine imprime as seis bandeirolas da subida e da
+   descida e a tabela final; vãos de ~3000 mm e larguras diferentes entre si.
+   Depois ela nivela no andar mais próximo, e o widget a mostra nivelada.
+4. **Viagem**: `vai 1 3` no painel; a cabine deve chegar com `CHEGADA ... erro`
+   abaixo de 10 mm, abrir e fechar a porta.
+5. **Cortina**: "Obstruir porta" no dashboard enquanto a porta fecha; o log da
+   cabine mostra o fechamento inibido e reiniciado quando a obstrução cessa.
+6. **Modo Degradado**: com uma cabine em movimento, `corta-cota <n> 20`; ela
+   reduz para a velocidade mínima, pousa no próximo andar, abre a porta e só a
+   fecha quando a Cota volta.
+7. **Despacho**: um Cenário de Tráfego pelo dashboard; acompanhar no painel a
+   maior espera em curso (tem de ficar abaixo de 90 s) e os tempos médios.
+
+Os CSVs ficam em `dados/`. Os gráficos são gerados fora da placa, que não tem
+matplotlib:
+
+```bash
+scp -P <porta> <usuario>@<placa>:embarcados-2026-2/dados/*.csv dados/
+python3 -m ferramentas.graficos --pid dados/pid_cabine1.csv --potencia dados/potencia.csv
+```
+
+| Sintoma | Causa provável |
+|:--|:--|
+| Cabine parada em `aguardando central` | central fora do ar, porta TCP diferente no `central.json`, ou sem Cota |
+| `CALIBRACAO FALHOU: vao de ...` | borda perdida numa varredura; ela é refeita sozinha em 5 s. Persistindo, baixar `duty_porcento` da calibração |
+| `TRAVAMENTO` | motor sem mover a cabine: duty de arranque abaixo do atrito real, ou fim do poço |
+| Chega e renivela muitas vezes | ganhos fortes para o motor real: reduzir `kp` ou aumentar `kd` no `config/cabineN.json` |
+| Demora demais na aproximação | `kd` alto demais (ver os gráficos de sintonia no README) |

@@ -1,0 +1,29 @@
+{
+  "cabine": 1,
+  "endereco_modbus": "0x11",
+  "tcp": {
+    "endereco": "0.0.0.0",
+    "porta": 10101
+  },
+  "pinos": {
+    "PWM": 13,
+    "DIR1": 22,
+    "DIR2": 23,
+    "ENC_A": 20,
+    "ENC_B": 21,
+    "CORTINA": 26,
+    "SENSOR_ANDAR": 0
+  },
+  "pid": {
+    "kp": 0.5,
+    "ki": 0.05,
+    "kd": 15.0
+  },
+  "calibracao": {
+    "duty_porcento": 35.0,
+    "arquivo": "dados/calibracao_cabine1.json"
+  },
+  "porta": {
+    "tempo_aberta_s": 3.0
+  }
+}

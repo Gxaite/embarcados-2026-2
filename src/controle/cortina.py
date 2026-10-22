@@ -13,13 +13,19 @@ from ..gpio.entradas import EntradaInterrupcao
 DEBOUNCE_MS = 20.0
 
 
+def _imprime(texto):
+    print(texto, flush=True)
+
+
 class Cortina:
-    def __init__(self, backend, ao_evento=None):
+    def __init__(self, backend, ao_evento=None, pino=None, eco=_imprime):
         self._ao_evento = ao_evento
+        self._eco = eco
         self.obstrucoes = 0
         self.liberacoes = 0
         self._entrada = EntradaInterrupcao(
-            backend, pinos.CORTINA, self._trata, debounce_ms=DEBOUNCE_MS)
+            backend, pinos.CORTINA if pino is None else pino, self._trata,
+            debounce_ms=DEBOUNCE_MS)
 
     @property
     def obstruida(self):
@@ -38,7 +44,8 @@ class Cortina:
         else:
             self.liberacoes += 1
             texto = "CORTINA: porta LIBERADA"
-        print("[%.3f] %s" % (time.monotonic(), texto), flush=True)
+        if self._eco is not None:
+            self._eco("[%.3f] %s" % (time.monotonic(), texto))
         if self._ao_evento is not None:
             self._ao_evento(nivel)
 

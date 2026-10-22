@@ -61,9 +61,27 @@ class EncoderQuadratura:
         with self._trava:
             return self._contagem
 
+    @property
+    def sentido(self):
+        """+1 ou -1 pelo ultimo passo valido, 0 se ainda nao andou."""
+        with self._trava:
+            return self._ultimo_passo
+
+    def leitura(self):
+        """(contagem, sentido) lidos juntos, sob a mesma trava."""
+        with self._trava:
+            return self._contagem, self._ultimo_passo
+
     def zera(self, valor=0):
         with self._trava:
             self._contagem = int(valor)
+
+    def desloca(self, delta):
+        """Soma delta a contagem de forma atomica: a reancoragem nao pode
+        perder as bordas que chegarem entre a leitura e a escrita."""
+        with self._trava:
+            self._contagem = self._satura(self._contagem + int(round(delta)))
+            return self._contagem
 
     def _na_borda(self, pino, valor):
         with self._trava:

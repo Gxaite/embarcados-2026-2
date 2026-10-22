@@ -10,3 +10,7 @@ RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
 
 # Apenas para a bateria de testes automatizados.
 pytest>=7.0
+
+# Apenas para os graficos do README (ferramentas/graficos.py), gerados fora da
+# placa a partir dos CSVs gravados nela.
+matplotlib>=3.5; platform_machine != "armv7l" and platform_machine != "aarch64"

@@ -5,6 +5,8 @@ linha de comando, mostra-a como se tivesse sido digitada e a executa por
 cli.executa. O menu nao duplica logica nenhuma, e quem assiste ve qual
 comando corresponde a cada opcao, com os mesmos bytes TX e RX.
 """
+import time
+
 from . import cli_comunicacao as cli
 from . import tela
 from .tela import exibe
@@ -169,11 +171,12 @@ def _navega(contexto, menu, caminho):
             acao = acao(contexto)
         if isinstance(acao, str):
             acao = [(None, acao)]
-        for aviso, linha in acao or ():
-            exibe()
-            if aviso:
-                exibe(aviso)
-            exibe("uart> %s" % linha)
+        for indice, (aviso, linha) in enumerate(acao or ()):
+            if indice:
+                # Tempo de ler o resultado; em rajada o log da ESP32 tambem
+                # perdia o comando do meio.
+                time.sleep(cli.PAUSA_DO_ROTEIRO_S)
+            cli.anuncia(linha, aviso)
             if not cli.executa(contexto, linha):
                 raise Sair()
 
