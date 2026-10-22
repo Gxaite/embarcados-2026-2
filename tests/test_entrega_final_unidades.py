@@ -85,9 +85,30 @@ def test_cota_vencida_cai_para_o_degradado():
     assert cota.valida and cota.cota_ma == 4000 and cota.sequencia == 7
     relogio.agora = 1.97
     # Vence antes do proximo ciclo: o teto de degradado ja vale.
-    assert cota.duty_maximo_durante(0.05) == pytest.approx(100 / 6)
+    assert cota.duty_maximo_durante(0.05) == pytest.approx(
+        100 / 6 / cota.fator_de_corrente)
     relogio.agora = 2.1
     assert not cota.valida and cota.cota_ma == 1000
+
+
+def test_corrente_medida_acima_da_formula_reduz_o_teto():
+    cota = cota_mod.CotaDePotencia(relogio=Relogio())
+    cota.recebe(1000, 2.0)
+    cota.mede_corrente(1212, 16.67)       # medido na bancada
+    # No teto, a corrente que a bancada daria cabe na Cota.
+    assert 6000 * 1.212 * cota.duty_maximo / 100 <= 1000
+    cota.mede_corrente(None, 50)
+    cota.mede_corrente(5000, 5)           # duty baixo demais para medir
+    assert cota.fator_de_corrente >= 1.212
+
+
+def test_fator_nunca_afrouxa_a_formula():
+    cota = cota_mod.CotaDePotencia(relogio=Relogio())
+    cota.recebe(3000, 2.0)
+    for _ in range(1000):
+        cota.mede_corrente(1000, 50)      # corrente bem abaixo da formula
+    assert cota.fator_de_corrente == 1.0
+    assert cota.duty_maximo == 50.0
 
 
 def test_divisao_respeita_capacidade_e_teto():

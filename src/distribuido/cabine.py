@@ -373,6 +373,7 @@ class ServidorDistribuido:
             return
         with self._trava:
             self.registradores = dict(dados)
+            self.cota.mede_corrente(dados.get("corrente_ma"), self.malha.comando)
             if "porta_estado" in dados:
                 self.porta.registradores(dados["porta_estado"], self._relogio())
 
@@ -435,6 +436,7 @@ class ServidorDistribuido:
                 "cota_ma": self.cota.cota_ma,
                 "cota_valida": self.cota.valida,
                 "cota_seq": self.cota.sequencia,
+                "fator_de_corrente": round(self.cota.fator_de_corrente, 3),
                 "fase": self.malha.fase,
                 "alvo": self.andar_alvo,
                 "paradas": sorted(self.itinerario.paradas()),

@@ -8,7 +8,8 @@ Reproduz o que o enunciado descreve e o que a Entrega Final precisa exercitar:
 - atrito estatico (parado, nao arranca abaixo de 10% de duty) e inercia;
 - quadratura de verdade, uma transicao por milimetro, e perda ocasional de
   transicoes para simular a deriva da contagem na Raspberry Pi;
-- corrente proporcional ao duty, 6000 mA a 100%;
+- corrente proporcional ao duty, 21% acima dos 6000 mA a 100% da formula,
+  como a bancada mediu;
 - porta com tempos de abertura e fechamento, obstruida pela cortina de luz.
 
 Tambem conta as violacoes que a avaliacao verifica (porta aberta fora do
@@ -23,6 +24,8 @@ DUTY_DE_ARRANQUE = 10.0
 VELOCIDADE_MAXIMA_MM_S = 1000.0     # a 100% de duty
 CONSTANTE_DE_INERCIA_S = 0.30
 CORRENTE_MAXIMA_MA = 6000.0
+# Medido na bancada em 22/10/2026: 1212 mA a 17% de duty, 21% acima da formula.
+EXCESSO_DE_CORRENTE = 1.21
 TOLERANCIA_MM = 10.0
 POCO_MM = 400.0
 
@@ -84,7 +87,7 @@ class CabineFisica:
         dir1 = self.niveis[self.pinagem["DIR1"]]
         dir2 = self.niveis[self.pinagem["DIR2"]]
         if (dir1, dir2) in ((1, 0), (0, 1)):
-            return CORRENTE_MAXIMA_MA * self.duty / 100.0
+            return CORRENTE_MAXIMA_MA * EXCESSO_DE_CORRENTE * self.duty / 100.0
         return 0.0
 
     def andar_mais_proximo(self):
