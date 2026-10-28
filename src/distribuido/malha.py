@@ -34,11 +34,19 @@ TOLERANCIA_MM = 10.0            # Secao 3.2
 # A malha mira mais perto que a tolerancia para que a deriva ate a proxima
 # bandeirola e o arredondamento nao a levem para fora.
 TOLERANCIA_DE_CHEGADA_MM = 6.0
-PARADA_FINA_MM = 3.0
-VELOCIDADE_DE_PARADA_MM_S = 40.0
+# Freia a menos disto do alvo e devagar: o resto a cabine percorre parando.
+# Com 3 mm e 40 mm/s a aproximacao exponencial do PID gastava 1,7 s a mais por
+# parada, e ainda dava um pulso de renivelamento (simulador, Kd 8).
+PARADA_FINA_MM = 6.0
+VELOCIDADE_DE_PARADA_MM_S = 60.0
 VELOCIDADE_PARADA_MM_S = 4.0
 
 DUTY_DE_ARRANQUE = 12.0         # 10% do enunciado com folga
+# Acima disto o Python nao acompanha as bordas do encoder: a 60% a contagem
+# ficou 19 mm atras em 3000 mm na rasp34 (src/gpio/encoder.py), e na rasp52,
+# a ~60% com o teto pela corrente medida, a deriva levou a porta fora do nivel.
+# Ate 56% a placa chegou com +-3 mm em todas as viagens de 28/10/2026.
+DUTY_MAXIMO_DO_ENCODER = 55.0
 RAMPA_POR_S = 100.0             # pontos de duty por segundo na aceleracao
 ERRO_PARA_ARRANQUE_MM = 30.0    # abaixo disto, parado, corrige por pulsos
 
@@ -282,7 +290,7 @@ class MalhaDePosicao:
         dt None aplica sem rampa (pulso de renivelamento). Reduzir o duty
         nunca espera a rampa: frear e cumprir uma Cota menor sao imediatos.
         """
-        modulo = min(abs(saida), self.duty_maximo)
+        modulo = min(abs(saida), self.duty_maximo, DUTY_MAXIMO_DO_ENCODER)
         mesmo_sentido = (saida > 0) == (self.comando > 0) and self.comando != 0
         atual = abs(self.comando) if mesmo_sentido else 0.0
         if dt is not None and modulo > atual:

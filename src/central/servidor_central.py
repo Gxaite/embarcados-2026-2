@@ -24,6 +24,7 @@ from ..rede.cliente import ClienteReconectavel
 from ..uart.erros import ErroComunicacao
 from . import despacho
 from ..distribuido.cota import duty_maximo_de
+from ..distribuido.malha import DUTY_MAXIMO_DO_ENCODER
 from .cotas import CAPACIDADE_DESCONHECIDA_MA, COTA_MAXIMA_MA, RepartidorDeCotas
 from .registro import RegistroDeChamadas
 
@@ -283,9 +284,9 @@ class ServidorCentral:
         # dela. Com a Cota de agora, alta enquanto as outras estao ociosas, a
         # espera saia otimista e passava dos 90 s quando elas arrancavam.
         capacidade = self.capacidade_ma() or CAPACIDADE_DESCONHECIDA_MA
-        duty_previsto = duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
-                                       estado.get("corrente_parada_ma"),
-                                       estado.get("corrente_por_duty_ma"))
+        duty_previsto = min(DUTY_MAXIMO_DO_ENCODER, duty_maximo_de(
+            min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
+            estado.get("corrente_parada_ma"), estado.get("corrente_por_duty_ma")))
         return dict(estado, paradas=sorted(paradas), chamadas_do_central=chamadas,
                     comprometidos=len(pendentes),
                     velocidade_por_duty=cabine.velocidade_por_duty,
