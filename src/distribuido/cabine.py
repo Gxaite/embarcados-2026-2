@@ -454,6 +454,7 @@ class ServidorDistribuido:
                 "fase": self.malha.fase,
                 "alvo": self.andar_alvo,
                 "paradas": sorted(self.itinerario.paradas()),
+                "varredura": self.itinerario.sentido,
                 "chamadas": self.itinerario.lista(),
                 "eventos": self.itinerario.ultimos_eventos(),
                 "reancoragens": self.reancoragens,

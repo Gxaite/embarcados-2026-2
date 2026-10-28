@@ -26,6 +26,7 @@ TEMPO_DE_PARADA_S = 7.0          # abrir 1,5 + aberta 3 + fechar 1,5 + folga
 PESO_DO_ATRASO_DOS_OUTROS = 0.40
 PESO_DA_VIAGEM = 0.20
 VAO_MM = 3000.0
+NO_ANDAR_MM = 10.0
 # Invariante da Secao 7.5: ninguem espera mais de 90 s pelo embarque. A
 # estimativa tem erro, entao o limite usado aqui tem folga.
 ESPERA_MAXIMA_S = 90.0
@@ -34,13 +35,17 @@ PENALIDADE_S = 1000.0
 
 
 def _ordem_scan(posicao_mm, sentido, paradas, posicoes):
-    acima = sorted(a for a in paradas if posicoes[a] > posicao_mm)
-    abaixo = sorted((a for a in paradas if posicoes[a] <= posicao_mm), reverse=True)
+    # Parada no andar em que a cabine ja esta vem primeiro, como no itinerario:
+    # contada como "abaixo", ela puxava a estimativa para a descida.
+    aqui = [a for a in paradas if abs(posicoes[a] - posicao_mm) <= NO_ANDAR_MM]
+    acima = sorted(a for a in paradas if posicoes[a] - posicao_mm > NO_ANDAR_MM)
+    abaixo = sorted((a for a in paradas if posicao_mm - posicoes[a] > NO_ANDAR_MM),
+                    reverse=True)
     if sentido < 0 or (sentido == 0 and abaixo and (
             not acima or posicao_mm - posicoes[abaixo[0]]
             < posicoes[acima[0]] - posicao_mm)):
-        return abaixo + acima
-    return acima + abaixo
+        return aqui + abaixo + acima
+    return aqui + acima + abaixo
 
 
 def _percorre(posicao_mm, ordem, posicoes, velocidade_mm_s):
@@ -76,6 +81,10 @@ def custo(estado, origem, destino):
     alvo = estado.get("alvo")
     if sentido == 0 and alvo is not None:
         sentido = 1 if posicoes[alvo] > posicao else -1
+    if sentido == 0:
+        # Parada num andar (porta abrindo ou aberta): ela segue a varredura do
+        # itinerario, e nao para o lado da parada mais perto.
+        sentido = estado.get("varredura") or 0
     paradas = set(estado.get("paradas") or [])
     velocidade = velocidade_de_cruzeiro(estado)
 
