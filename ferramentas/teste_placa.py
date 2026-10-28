@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 
 from src import configuracao
 
@@ -313,6 +314,8 @@ class Vigia:
         self.maior_espera_s = 0.0
         self.maior_excesso_ma = 0
         self.falhas_de_registrador = {}
+        self._cotas = {n: deque(maxlen=40) for n in CABINES}   # (instante, Cota)
+        self._leitura_conferida = {}
         self._parar = threading.Event()
         self._thread = threading.Thread(target=self._laco, daemon=True, name="vigia")
 
@@ -363,13 +366,26 @@ class Vigia:
                 self.falhas_de_registrador[numero] = registradores["falha"]
             if estado is not None:
                 cota = estado.get("cota_ma") if estado.get("cota_valida") else COTA_MINIMA_MA
-                excesso = registradores["corrente_ma"] - (cota or COTA_MINIMA_MA)
-                if excesso > 0:
-                    self.maior_excesso_ma = max(self.maior_excesso_ma, excesso)
-                if excesso > FOLGA_DE_CORRENTE_MA:
-                    self._viola("corrente acima da Cota",
-                                "cabine %d: %d mA com Cota de %d mA"
-                                % (numero, registradores["corrente_ma"], cota))
+                historico = self._cotas[numero]
+                if not historico or historico[-1][0] != cabine.estado_em:
+                    historico.append((cabine.estado_em, cota or COTA_MINIMA_MA))
+            # Cada leitura de corrente uma vez so, contra a maior Cota vigente
+            # perto do instante dela: a leitura MODBUS e o relatorio da cabine
+            # chegam em instantes diferentes, e uma reducao de Cota entre os
+            # dois parecia excesso.
+            lida_em = cabine.registradores_em
+            if self._leitura_conferida.get(numero) == lida_em or not self._cotas[numero]:
+                continue
+            self._leitura_conferida[numero] = lida_em
+            vigentes = [c for t, c in self._cotas[numero] if abs(t - lida_em) <= 1.0]
+            limite = max(vigentes) if vigentes else self._cotas[numero][-1][1]
+            excesso = registradores["corrente_ma"] - limite
+            if excesso > 0:
+                self.maior_excesso_ma = max(self.maior_excesso_ma, excesso)
+            if excesso > FOLGA_DE_CORRENTE_MA:
+                self._viola("corrente acima da Cota",
+                            "cabine %d: %d mA com Cota de %d mA"
+                            % (numero, registradores["corrente_ma"], limite))
         espera_atual = central.registro.metricas()["maior_espera_atual_s"]
         self.maior_espera_s = max(self.maior_espera_s, espera_atual)
         if espera_atual > ESPERA_MAXIMA_S:
