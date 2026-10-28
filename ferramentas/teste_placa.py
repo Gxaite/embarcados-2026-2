@@ -131,8 +131,16 @@ class BancadaPlaca(_Bancada):
         comando = [sys.executable, "-u", "-m", "src.distribuido", "--cabine", str(numero),
                    "--registra-pid", os.path.join(self.pasta, "pid_cabine%d%s.csv"
                                                   % (numero, sufixo))]
-        processo = subprocess.Popen(comando, cwd=RAIZ, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, bufsize=1)
+        # A lgpio (por baixo da RPi.GPIO) cria o pipe .lgd-nfy0 no diretorio
+        # corrente; tres cabines subindo juntas no mesmo diretorio disputam o
+        # arquivo e as que perdem morrem no import. Cada uma tem o seu.
+        diretorio = os.path.join(self.pasta, "lgpio_cabine%d" % numero)
+        os.makedirs(diretorio, exist_ok=True)
+        ambiente = dict(os.environ, PYTHONPATH=os.pathsep.join(
+            p for p in (RAIZ, os.environ.get("PYTHONPATH")) if p))
+        processo = subprocess.Popen(comando, cwd=diretorio, env=ambiente,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, bufsize=1)
         self._processos[numero] = processo
         threading.Thread(target=self._le_saida, args=(numero, processo), daemon=True,
                          name="saida-cabine%d" % numero).start()

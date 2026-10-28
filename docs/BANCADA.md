@@ -228,6 +228,7 @@ python3 -m ferramentas.graficos --pid dados/pid_cabine1.csv --potencia dados/pot
 
 | Sintoma | Causa provável |
 |:--|:--|
+| Cabine morre na partida com `FileNotFoundError: '.lgd-nfy-3'` | lgpio: cabines subindo juntas no mesmo diretorio; o `sobe_tudo.sh` e o teste ja dao um diretorio a cada uma. A mao, suba uma de cada vez |
 | Cabine parada em `aguardando central` | central fora do ar, porta TCP diferente no `central.json`, ou sem Cota |
 | `CALIBRACAO FALHOU: vao de ...` | borda perdida numa varredura; ela é refeita sozinha em 5 s. Persistindo, baixar `duty_porcento` da calibração |
 | `TRAVAMENTO` | motor sem mover a cabine: duty de arranque abaixo do atrito real, ou fim do poço |

@@ -8,3 +8,6 @@ __pycache__/
 
 # Estado, logs e calibracoes gravados pelos processos da Entrega Final.
 /dados/
+
+# Pipes de notificacao da lgpio (RPi.GPIO na Raspberry Pi OS atual).
+.lgd-nfy*

@@ -26,10 +26,16 @@ fi
 
 segura='; echo; echo "processo encerrado - Enter fecha a janela"; read _'
 tmux new-session -d -s "$SESSAO" -n central "python3 -m src.central $POTENCIA $segura"
+# A lgpio (por baixo da RPi.GPIO) cria o pipe .lgd-nfy0 no diretorio corrente:
+# tres cabines subindo juntas no mesmo diretorio disputam o arquivo e as que
+# perdem morrem no import. Cada uma roda no seu.
+RAIZ=$(pwd)
 for n in 1 2 3; do
+    mkdir -p "dados/lgpio/cabine$n"
     extra=""
-    [ -n "$PID_CSV" ] && extra="--registra-pid dados/pid_cabine$n.csv"
-    tmux new-window -t "$SESSAO" -n "cabine$n" "python3 -m src.distribuido --cabine $n $extra $segura"
+    [ -n "$PID_CSV" ] && extra="--registra-pid $RAIZ/dados/pid_cabine$n.csv"
+    tmux new-window -t "$SESSAO" -n "cabine$n" -c "$RAIZ/dados/lgpio/cabine$n" \
+        "PYTHONPATH=$RAIZ python3 -m src.distribuido --cabine $n $extra $segura"
 done
 tmux select-window -t "$SESSAO:central"
 exec tmux attach -t "$SESSAO"
