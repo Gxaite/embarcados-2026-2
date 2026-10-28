@@ -60,10 +60,10 @@ FOLGA_DO_POUSO_MM = 60.0
 # Para trocar o destino no meio da viagem por uma parada nova no caminho.
 TEMPO_DE_FRENAGEM_S = 1.0
 FOLGA_DE_FRENAGEM_MM = 150.0
-# A leitura de corrente chega ate 0,5 s atrasada pelo central. Dividida pelo
-# duty de agora numa desaceleracao, ela inflava o fator de corrente (1,95 na
-# rasp52, contra 1,04 em cruzeiro) e a cabine andava ate 40% mais devagar que
-# a Cota permitia. O divisor e o maior duty do ultimo 1 s.
+# A leitura de corrente chega ate 0,5 s atrasada pelo central. Comparada com o
+# duty de agora numa desaceleracao, ela parecia alta demais e a cabine andava
+# mais devagar que a Cota permitia (rasp52). Ela e comparada com o maior duty
+# do ultimo 1 s, e so conta como corrente parada depois de 1 s parada.
 CICLOS_DA_JANELA_DE_DUTY = 20
 
 
@@ -497,7 +497,8 @@ class ServidorDistribuido:
                 "cota_ma": self.cota.cota_ma,
                 "cota_valida": self.cota.valida,
                 "cota_seq": self.cota.sequencia,
-                "fator_de_corrente": round(self.cota.fator_de_corrente, 3),
+                "corrente_parada_ma": round(self.cota.corrente_parada_ma),
+                "corrente_por_duty_ma": round(self.cota.corrente_por_duty_ma, 2),
                 "fase": self.malha.fase,
                 "alvo": self.andar_alvo,
                 "paradas": sorted(self.itinerario.paradas()),

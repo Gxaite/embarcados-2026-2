@@ -34,6 +34,7 @@ PERIODO_DAS_COTAS_S = 1.0
 ESTADO_VELHO_S = 2.0
 LEITURA_FRESCA_S = 0.15
 EVENTOS_NA_TELA = 200
+CENARIO_UP_PEAK = 1                 # registrador cenario_ativo (Secao 5.3)
 
 
 class Cabine:
@@ -92,6 +93,7 @@ class ServidorCentral:
         self.fila_sem_cabine = 0
         self.ultima_escolha = None
         self._cotas_cortadas_ate = {}
+        self._estacionada_em = {}
         self.eventos = deque(maxlen=EVENTOS_NA_TELA)
         self._arquivo_de_eventos = configuracao.get("arquivo_de_eventos")
         self._trava_do_log = threading.Lock()
@@ -169,6 +171,29 @@ class ServidorCentral:
             self.predio_em = self._relogio()
         except ErroComunicacao as erro:
             self.log("MODBUS predio: %s" % erro)
+            return
+        self._estaciona_no_terreo()
+
+    def _estaciona_no_terreo(self):
+        """No up-peak (cenario_ativo = 1) a cabine ociosa volta ao terreo, de
+        onde saem 80% das chamadas. Com a lotacao limitada, quem chegava ao
+        terreo com as tres cabines no alto esperava uma voltar: na rasp52 a pior
+        espera passou de 90 s."""
+        if self.predio.get("cenario_ativo") != CENARIO_UP_PEAK:
+            return
+        agora = self._relogio()
+        for numero, cabine in self.cabines.items():
+            estado = cabine.estado_recente(agora)
+            if estado is None or estado.get("modo") != "operando" \
+                    or estado.get("paradas") or estado.get("andar") in (None, 0) \
+                    or estado.get("fase") not in ("livre", "chegou") \
+                    or estado.get("porta_ciclo") not in (None, "ociosa") \
+                    or self.registro.pendentes_da_cabine(numero) \
+                    or agora - self._estacionada_em.get(numero, -1e9) < 5.0:
+                continue
+            self._estacionada_em[numero] = agora
+            cabine.cliente.envia({"tipo": p.VAI_ANDAR, "andar": 0})
+            self.log("up-peak: cabine %d ociosa volta ao terreo" % numero)
 
     def _le_cabines(self):
         for cabine in self.cabines.values():
@@ -252,12 +277,13 @@ class ServidorCentral:
                 idade = agora_de_parede - chamada.registro
                 esperando[chamada.origem] = max(idade, esperando.get(chamada.origem, 0))
         # A viagem e estimada na fatia de um terco do barramento, a Cota que a
-        # cabine tem com as tres ocupadas, e com o fator de corrente dela. Com
-        # a Cota de agora, alta enquanto as outras estao ociosas, a espera
-        # saia otimista e passava dos 90 s quando elas arrancavam.
+        # cabine tem com as tres ocupadas, convertida pelo modelo de corrente
+        # dela. Com a Cota de agora, alta enquanto as outras estao ociosas, a
+        # espera saia otimista e passava dos 90 s quando elas arrancavam.
         capacidade = self.capacidade_ma() or CAPACIDADE_DESCONHECIDA_MA
         duty_previsto = duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
-                                       estado.get("fator_de_corrente") or 1.0)
+                                       estado.get("corrente_parada_ma"),
+                                       estado.get("corrente_por_duty_ma"))
         return dict(estado, paradas=sorted(paradas), esperando=esperando,
                     comprometidos=len(pendentes),
                     velocidade_por_duty=cabine.velocidade_por_duty,

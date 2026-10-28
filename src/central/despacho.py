@@ -21,7 +21,7 @@ retirada da fila seja atendida.
 # de arranque e aproximacao; uma parada custa o ciclo da porta.
 VELOCIDADE_POR_DUTY_MM_S = 10.0   # padrao, ate o central medir a da cabine
 TEMPO_DE_ARRANQUE_S = 6.5
-TEMPO_DE_PARADA_S = 7.0          # abrir 1,5 + aberta 3 + fechar 1,5 + folga
+TEMPO_DE_PARADA_S = 6.0          # abrir 1,5 + aberta 2 + fechar 1,5 + folga
 # Pesos menores (eram 0,5 e 0,25) favorecem a cabine que ja cobre a rota.
 PESO_DO_ATRASO_DOS_OUTROS = 0.40
 PESO_DA_VIAGEM = 0.20

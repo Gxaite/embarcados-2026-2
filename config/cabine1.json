@@ -24,6 +24,6 @@
     "arquivo": "dados/calibracao_cabine1.json"
   },
   "porta": {
-    "tempo_aberta_s": 3.0
+    "tempo_aberta_s": 2.0
   }
 }

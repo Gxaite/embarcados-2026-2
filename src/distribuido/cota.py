@@ -8,12 +8,15 @@ O prazo e contado no relogio desta cabine a partir do recebimento, nunca por
 um horario mandado pelo central: os dois processos podem estar em maquinas
 diferentes, e um relogio adiantado faria toda cota chegar ja vencida.
 
-A formula supoe 6000 mA a 100% de duty. Na bancada (22/10/2026) a ESP32
-mediu 1212 mA a 17% de duty, uns 20% acima do que ela preve. Por isso a
-corrente medida (registrador corrente_ma, que o central repassa a cada 500 ms)
-corrige a conversao: o fator e o pior excesso visto, com folga, e so desce
-devagar. Ele nunca fica abaixo de 1: a cabine nunca usa mais duty do que a
-formula do enunciado permite.
+A formula supoe 6000 mA a 100% de duty, proporcional. A ESP32 nao e assim:
+marca 300 mA com a cabine parada mais ~54 mA por ponto de duty (1212 mA a 17%
+na bancada em 22/10/2026; 2300 a 37% e 3000 a 56% na rasp52 em 28/10/2026).
+A cabine mede os dois numeros na corrente que o central repassa a cada
+500 ms e usa como teto o maior duty cuja corrente prevista cabe na Cota, com
+folga. A inclinacao e a pior vista e so desce devagar, e o teto nunca passa
+da formula do enunciado. Um fator unico sobre a formula, como antes, era
+medido em duty baixo, onde os 300 mA pesam, e travava o cruzeiro em ~48% com
+Cota de 4000 mA: o barramento ficava 40% ocioso.
 
 Sem Cota valida a cabine entra em Modo Degradado e usa o teto de 1000 mA, a
 velocidade minima. Ela nao inventa potencia para si: 1000 mA e o que o
@@ -26,18 +29,25 @@ CORRENTE_DE_ACELERACAO_PLENA_MA = 6000.0
 COTA_DO_MODO_DEGRADADO_MA = 1000.0
 VALIDADE_PADRAO_S = 2.0
 
-# Corrente medida / corrente da formula. Comeca acima do 1,21 medido na
-# bancada, para nao estourar a Cota antes da primeira medicao.
-FATOR_INICIAL = 1.3
-FATOR_MAXIMO = 2.0
-FOLGA_DO_FATOR = 1.05
-QUEDA_DO_FATOR_POR_MEDICAO = 0.002
+CORRENTE_PARADA_INICIAL_MA = 300.0
+# mA por ponto de duty. Comeca 10% acima dos 60 da formula, ate a primeira
+# medicao; a pior medida inclui o pico da partida (1,13 vez o de cruzeiro).
+CORRENTE_POR_DUTY_INICIAL_MA = 66.0
+CORRENTE_POR_DUTY_MINIMA_MA = 30.0
+CORRENTE_POR_DUTY_MAXIMA_MA = 150.0
+QUEDA_POR_MEDICAO_MA = 0.05
+FOLGA_DA_COTA = 1.05
 DUTY_MINIMO_PARA_MEDIR = 12.0
 
 
-def duty_maximo_de(cota_ma, fator=1.0):
-    return max(0.0, min(100.0, cota_ma / (CORRENTE_DE_ACELERACAO_PLENA_MA * fator)
-                        * 100.0))
+def duty_maximo_de(cota_ma, corrente_parada_ma=None, corrente_por_duty_ma=None):
+    """Teto de duty da Cota: a formula do enunciado, cota / 6000 x 100, e, com
+    o modelo medido, o duty cuja corrente prevista cabe na Cota com folga."""
+    teto = cota_ma / CORRENTE_DE_ACELERACAO_PLENA_MA * 100.0
+    if corrente_por_duty_ma:
+        teto = min(teto, (cota_ma / FOLGA_DA_COTA - (corrente_parada_ma or 0.0))
+                   / corrente_por_duty_ma)
+    return max(0.0, min(100.0, teto))
 
 
 class CotaDePotencia:
@@ -51,19 +61,26 @@ class CotaDePotencia:
         # estado: e assim que ele sabe que uma reducao ja chegou e que a
         # potencia liberada pode ser concedida a outra cabine.
         self.sequencia = None
-        self.fator_de_corrente = FATOR_INICIAL
+        self.corrente_parada_ma = CORRENTE_PARADA_INICIAL_MA
+        self.corrente_por_duty_ma = CORRENTE_POR_DUTY_INICIAL_MA
 
     def mede_corrente(self, corrente_ma, duty):
-        """Corrente medida com o motor no duty `duty` (em %)."""
-        duty = abs(duty)
-        if corrente_ma is None or duty < DUTY_MINIMO_PARA_MEDIR:
+        """Corrente medida (registrador corrente_ma) com o motor no duty `duty`,
+        em %. Parado, ela e a corrente de repouso; acima de 12%, da a
+        inclinacao."""
+        if corrente_ma is None:
             return
-        prevista = CORRENTE_DE_ACELERACAO_PLENA_MA * duty / 100.0
-        medido = float(corrente_ma) / prevista * FOLGA_DO_FATOR
+        duty = abs(duty)
         with self._trava:
-            self.fator_de_corrente = max(
-                1.0, min(FATOR_MAXIMO, max(medido, self.fator_de_corrente
-                                           - QUEDA_DO_FATOR_POR_MEDICAO)))
+            if duty == 0.0:
+                self.corrente_parada_ma = float(corrente_ma)
+                return
+            if duty < DUTY_MINIMO_PARA_MEDIR:
+                return
+            medida = (float(corrente_ma) - self.corrente_parada_ma) / duty
+            self.corrente_por_duty_ma = max(CORRENTE_POR_DUTY_MINIMA_MA, min(
+                CORRENTE_POR_DUTY_MAXIMA_MA,
+                max(medida, self.corrente_por_duty_ma - QUEDA_POR_MEDICAO_MA)))
 
     def recebe(self, cota_ma, validade_s=VALIDADE_PADRAO_S, sequencia=None):
         with self._trava:
@@ -88,7 +105,8 @@ class CotaDePotencia:
 
     @property
     def duty_maximo(self):
-        return duty_maximo_de(self.cota_ma, self.fator_de_corrente)
+        return duty_maximo_de(self.cota_ma, self.corrente_parada_ma,
+                              self.corrente_por_duty_ma)
 
     def duty_maximo_durante(self, segundos):
         """Teto de duty que continua valido pelos proximos `segundos`.
@@ -100,4 +118,5 @@ class CotaDePotencia:
             valida_ate_la = self._vence_em is not None and \
                 self._relogio() + segundos < self._vence_em
             cota = self._cota_ma if valida_ate_la else COTA_DO_MODO_DEGRADADO_MA
-        return duty_maximo_de(min(cota, self.cota_ma), self.fator_de_corrente)
+        return duty_maximo_de(min(cota, self.cota_ma), self.corrente_parada_ma,
+                              self.corrente_por_duty_ma)

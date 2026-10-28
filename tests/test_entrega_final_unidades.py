@@ -113,29 +113,45 @@ def test_cota_vencida_cai_para_o_degradado():
     assert cota.valida and cota.cota_ma == 4000 and cota.sequencia == 7
     relogio.agora = 1.97
     # Vence antes do proximo ciclo: o teto de degradado ja vale.
-    assert cota.duty_maximo_durante(0.05) == pytest.approx(
-        100 / 6 / cota.fator_de_corrente)
+    assert cota.duty_maximo_durante(0.05) == pytest.approx(cota_mod.duty_maximo_de(
+        1000, cota.corrente_parada_ma, cota.corrente_por_duty_ma))
     relogio.agora = 2.1
     assert not cota.valida and cota.cota_ma == 1000
 
 
-def test_corrente_medida_acima_da_formula_reduz_o_teto():
+def corrente_da_esp32(duty):
+    """Medida na ESP32: 300 mA parada mais ~54 mA por ponto de duty."""
+    return 300 + 54.0 * duty if duty else 300
+
+
+def test_teto_pela_corrente_medida_cabe_na_cota():
     cota = cota_mod.CotaDePotencia(relogio=Relogio())
     cota.recebe(1000, 2.0)
-    cota.mede_corrente(1212, 16.67)       # medido na bancada
-    # No teto, a corrente que a bancada daria cabe na Cota.
-    assert 6000 * 1.212 * cota.duty_maximo / 100 <= 1000
+    cota.mede_corrente(300, 0)
+    cota.mede_corrente(1212, 16.67)       # medido na bancada em 22/10
+    assert corrente_da_esp32(cota.duty_maximo) <= 1000
     cota.mede_corrente(None, 50)
     cota.mede_corrente(5000, 5)           # duty baixo demais para medir
-    assert cota.fator_de_corrente >= 1.212
+    assert cota.corrente_por_duty_ma >= (1212 - 300) / 16.67
 
 
-def test_fator_nunca_afrouxa_a_formula():
+def test_teto_de_cruzeiro_usa_o_barramento():
+    # rasp52: com Cota de 4000 mA as cabines cruzavam a 37% (2300 mA).
+    cota = cota_mod.CotaDePotencia(relogio=Relogio())
+    cota.recebe(4000, 2.0)
+    cota.mede_corrente(300, 0)
+    for _ in range(1000):
+        cota.mede_corrente(corrente_da_esp32(37), 37)
+    assert cota.duty_maximo > 60
+    assert corrente_da_esp32(cota.duty_maximo) <= 4000 / cota_mod.FOLGA_DA_COTA
+
+
+def test_teto_nunca_passa_da_formula():
     cota = cota_mod.CotaDePotencia(relogio=Relogio())
     cota.recebe(3000, 2.0)
-    for _ in range(1000):
+    cota.mede_corrente(0, 0)
+    for _ in range(2000):
         cota.mede_corrente(1000, 50)      # corrente bem abaixo da formula
-    assert cota.fator_de_corrente == 1.0
     assert cota.duty_maximo == 50.0
 
 
