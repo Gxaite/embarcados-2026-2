@@ -308,6 +308,20 @@ def test_origem_urgente_passa_na_frente_do_scan():
     assert itinerario.proxima_parada(6000.0, mapa, None) == 0
 
 
+def test_sobrepasso_no_andar_urgente_nao_inverte_a_varredura():
+    # Down-peak no simulador: subindo para a origem urgente no 4, a cabine
+    # passou 3 mm do andar; depois do embarque descia para o 0 e largava o 5.
+    relogio = Relogio(1000.0)
+    mapa = mapa_regular()
+    itinerario = Itinerario(relogio=relogio)
+    itinerario.atribui(1, 4, 0, espera_s=55.0)
+    itinerario.atribui(2, 5, 4, espera_s=30.0)
+    itinerario.sentido = 1
+    assert itinerario.proxima_parada(mapa.posicao[4] + 3.0, mapa, None) == 4
+    itinerario.porta_abriu(4)
+    assert itinerario.proxima_parada(mapa.posicao[4] + 3.0, mapa, 4) == 5
+
+
 # -------------------------------------------------------------- porta
 class PortaFalsa:
     def __init__(self):

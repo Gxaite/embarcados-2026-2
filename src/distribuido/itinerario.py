@@ -22,6 +22,8 @@ EVENTOS_GUARDADOS = 200
 # Uma origem que espera ha mais que isto passa na frente da ordem do SCAN: e o
 # que segura o limite de 90 s quando chamadas novas vao entrando no caminho.
 ESPERA_URGENTE_S = 50.0
+# Distancia abaixo da qual a cabine ja esta no andar, so terminando de assentar.
+PERTO_DO_ANDAR_MM = 50.0
 
 
 class Chamada:
@@ -98,7 +100,12 @@ class Itinerario:
             return andar_aqui
         urgente = self._origem_urgente()
         if urgente is not None:
-            self.sentido = 1 if mapa.posicao[urgente] > posicao_mm else -1
+            distancia = mapa.posicao[urgente] - posicao_mm
+            # Ja chegando ao andar urgente o sentido fica: decidido pelos
+            # poucos mm de sobrepasso ele inverteria a varredura, e a cabine
+            # largaria as paradas a frente (espera de 95 s no down-peak).
+            if abs(distancia) > PERTO_DO_ANDAR_MM:
+                self.sentido = 1 if distancia > 0 else -1
             return urgente
         acima = [a for a in paradas if mapa.posicao[a] > posicao_mm]
         abaixo = [a for a in paradas if mapa.posicao[a] < posicao_mm]
