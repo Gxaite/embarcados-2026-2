@@ -409,6 +409,11 @@ class ServidorDistribuido:
                                        mensagem.get("espera_s", 0.0)):
                 self._log("chamada %d atribuida: %d -> %d" % (
                     mensagem["id"], mensagem["origem"], mensagem["destino"]))
+        elif tipo == p.ESQUECE:
+            esquecidas = self.itinerario.esquece(mensagem.get("ids", []))
+            if esquecidas:
+                self._log("ESP32 reiniciada: %d chamada(s) antiga(s) esquecida(s)"
+                          % len(esquecidas))
         elif tipo == p.VAI_ANDAR:
             self.itinerario.manual(int(mensagem["andar"]))
             self._log("comando manual: ir ao andar %d" % int(mensagem["andar"]))

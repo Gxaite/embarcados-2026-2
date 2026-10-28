@@ -5,17 +5,20 @@ tempo: quanto o passageiro novo vai esperar ate a porta abrir no andar de
 origem, mais quanto a parada nova atrasa quem ja esta atribuido a cabine, mais
 uma fracao da viagem dele (que as paradas da cabine no caminho alongam).
 
-A estimativa percorre o itinerario da cabine na mesma ordem em que ela o
-executa (SCAN, ver src/distribuido/itinerario.py): segue no sentido atual ate
-a ultima parada, inverte e volta. Cada trecho custa distancia / velocidade de
-cruzeiro, e cada parada o ciclo da porta. Uma chamada cuja origem ja e parada
-da cabine nao acrescenta parada - e o agrupamento de passageiros que o
-despacho por destino existe para aproveitar.
+A estimativa simula o itinerario da cabine com a mesma regra que ela executa
+(escolhe_parada, em src/distribuido/itinerario.py): SCAN, sem parar no
+caminho para quem vai no sentido contrario, e o destino de quem embarca vira
+parada. Cada trecho custa distancia / velocidade de cruzeiro, e cada parada o
+ciclo da porta. Uma chamada cuja origem ja e parada da cabine nao acrescenta
+parada - e o agrupamento de passageiros que o despacho por destino existe
+para aproveitar.
 
 So entram cabines conectadas, calibradas e operando. Sem nenhuma, a chamada
 fica na fila do simulador, e nao e retirada: o invariante e que toda chamada
 retirada da fila seja atendida.
 """
+from ..distribuido.itinerario import escolhe_parada, sentido_da_viagem
+
 # Modelo de tempo, medido nas viagens do simulador (ferramentas/experimentos.py
 # pid): um trecho custa distancia / velocidade de cruzeiro mais um custo fixo
 # de arranque e aproximacao; uma parada custa o ciclo da porta.
@@ -40,31 +43,41 @@ PENALIDADE_S = 1000.0
 LOTACAO = 7
 
 
-def _ordem_scan(posicao_mm, sentido, paradas, posicoes):
-    # Parada no andar em que a cabine ja esta vem primeiro, como no itinerario:
-    # contada como "abaixo", ela puxava a estimativa para a descida.
-    aqui = [a for a in paradas if abs(posicoes[a] - posicao_mm) <= NO_ANDAR_MM]
-    acima = sorted(a for a in paradas if posicoes[a] - posicao_mm > NO_ANDAR_MM)
-    abaixo = sorted((a for a in paradas if posicao_mm - posicoes[a] > NO_ANDAR_MM),
-                    reverse=True)
-    if sentido < 0 or (sentido == 0 and abaixo and (
-            not acima or posicao_mm - posicoes[abaixo[0]]
-            < posicoes[acima[0]] - posicao_mm)):
-        return aqui + abaixo + acima
-    return aqui + acima + abaixo
+def _simula(posicao_mm, sentido, chamadas, manuais, posicoes, velocidade_mm_s):
+    """Percorre o itinerario na ordem em que a cabine o executa (a mesma
+    escolhe_parada de src/distribuido/itinerario.py) e devolve, por chamada,
+    [instante do embarque, instante do desembarque] a partir de agora.
 
-
-def _percorre(posicao_mm, ordem, posicoes, velocidade_mm_s):
-    """Instante de chegada a cada parada, na ordem."""
-    instantes = {}
+    chamadas: lista de (origem, destino ou None, ja embarcada)."""
+    pendentes = {i: [o, d, emb] for i, (o, d, emb) in enumerate(chamadas)}
+    instantes = {i: [0.0 if emb else None, None] for i, (_, _, emb) in enumerate(chamadas)}
+    manuais = set(manuais)
     tempo = 0.0
-    for andar in ordem:
+    for _ in range(2 * len(chamadas) + len(manuais) + 1):
+        obrigatorias = manuais | {d for _, d, emb in pendentes.values() if emb}
+        embarques = [(o, sentido_da_viagem(o, d)) for o, d, emb in pendentes.values()
+                     if not emb]
+        andar, sentido = escolhe_parada(posicao_mm, sentido, obrigatorias, embarques,
+                                        posicoes)
+        if andar is None:
+            break
         distancia = abs(posicoes[andar] - posicao_mm)
-        if distancia > 10.0:
+        if distancia > NO_ANDAR_MM:
             tempo += distancia / velocidade_mm_s + TEMPO_DE_ARRANQUE_S
-        instantes.setdefault(andar, tempo)
-        tempo += TEMPO_DE_PARADA_S
         posicao_mm = posicoes[andar]
+        manuais.discard(andar)
+        for i, chamada in list(pendentes.items()):
+            origem, destino, embarcada = chamada
+            if embarcada and destino == andar:
+                instantes[i][1] = tempo
+                del pendentes[i]
+            elif not embarcada and origem == andar:
+                instantes[i][0] = tempo
+                if destino is None:
+                    del pendentes[i]
+                else:
+                    chamada[2] = True
+        tempo += TEMPO_DE_PARADA_S
     return instantes
 
 
@@ -77,9 +90,11 @@ def velocidade_de_cruzeiro(estado):
 def custo(estado, origem, destino):
     """Segundos estimados para atender a chamada nesta cabine.
 
-    estado["esperando"] e {andar de origem: ha quanto tempo a chamada mais
-    antiga ali espera}, das chamadas ja atribuidas a esta cabine, e
-    estado["comprometidos"] quantas delas ainda nao desembarcaram."""
+    estado["chamadas_do_central"] sao as chamadas ja atribuidas a ela e nao
+    concluidas ({origem, destino, embarcada, idade_s}); estado["paradas"], as
+    paradas dela, de onde saem os comandos manuais; estado["comprometidos"],
+    quantas chamadas ela tem. estado["esperando"] ({origem: idade}, destino
+    desconhecido) tambem e aceito."""
     posicoes = {int(a): v["posicao_mm"] for a, v in (estado.get("mapa") or {}).items()}
     if not posicoes:
         posicoes = {a: a * VAO_MM for a in range(6)}
@@ -92,29 +107,40 @@ def custo(estado, origem, destino):
         # Parada num andar (porta abrindo ou aberta): ela segue a varredura do
         # itinerario, e nao para o lado da parada mais perto.
         sentido = estado.get("varredura") or 0
-    paradas = set(estado.get("paradas") or [])
+    chamadas, idades = [], []
+    for chamada in estado.get("chamadas_do_central") or []:
+        chamadas.append((chamada["origem"], chamada["destino"], chamada["embarcada"]))
+        idades.append(None if chamada["embarcada"] else chamada.get("idade_s", 0.0))
+    for andar, idade in (estado.get("esperando") or {}).items():
+        chamadas.append((andar, None, False))
+        idades.append(idade)
+    manuais = set(estado.get("paradas") or []) \
+        - {d if emb else o for o, d, emb in chamadas}
     velocidade = velocidade_de_cruzeiro(estado)
 
-    antes = _percorre(posicao, _ordem_scan(posicao, sentido, paradas, posicoes),
-                      posicoes, velocidade)
-    depois = _percorre(posicao, _ordem_scan(posicao, sentido, paradas | {origem},
-                                            posicoes), posicoes, velocidade)
+    antes = _simula(posicao, sentido, chamadas, manuais, posicoes, velocidade)
+    depois = _simula(posicao, sentido, chamadas + [(origem, destino, False)], manuais,
+                     posicoes, velocidade)
     # A porta ainda ocupada atrasa tudo meio ciclo.
     porta = TEMPO_DE_PARADA_S / 2 if estado.get("porta_ciclo") not in (None, "ociosa") \
         else 0.0
-    espera = depois[origem] + porta
-    atraso = sum(max(0.0, depois[a] - antes[a]) for a in antes)
-    # Dentro da cabine, cada parada dela entre a origem e o destino alonga a
-    # viagem do passageiro novo.
-    entre = [a for a in paradas if min(origem, destino) < a < max(origem, destino)]
-    viagem = abs(posicoes[destino] - posicoes[origem]) / velocidade \
-        + len(entre) * TEMPO_DE_PARADA_S
+    embarque, desembarque = depois[len(chamadas)]
+    if embarque is None:
+        return PENALIDADE_S * 10
+    espera = embarque + porta
+    viagem = (desembarque if desembarque is not None else embarque) - embarque
+    # O atraso imposto a cada chamada ja atribuida, no proximo evento dela:
+    # o embarque de quem espera, o desembarque de quem esta a bordo.
+    atraso = 0.0
+    for i, (_, _, embarcada) in enumerate(chamadas):
+        k = 1 if embarcada else 0
+        if antes[i][k] is not None and depois[i][k] is not None:
+            atraso += max(0.0, depois[i][k] - antes[i][k])
     total = espera + PESO_DO_ATRASO_DOS_OUTROS * atraso + PESO_DA_VIAGEM * viagem
 
     limite = ESPERA_MAXIMA_S - FOLGA_DA_ESPERA_S
-    previstas = [espera] + [idade + depois[a] + porta
-                            for a, idade in (estado.get("esperando") or {}).items()
-                            if a in depois]
+    previstas = [espera] + [idade + depois[i][0] + porta for i, idade in enumerate(idades)
+                            if idade is not None and depois[i][0] is not None]
     estouro = max(previstas) - limite
     if estouro > 0:
         total += PENALIDADE_S + estouro

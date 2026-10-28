@@ -8,6 +8,7 @@ Central -> cabine:
   cota          {"cota_ma", "validade_s", "seq"}      a cada 1 s
   chamada       {"id", "origem", "destino"}           atribuicao do Despacho
   vai_andar     {"andar"}                             comando manual
+  esquece       {"ids"}                               chamadas descartadas (ESP32 reiniciada)
   registradores {"dados": {...}}                      leitura MODBUS da cabine
   resposta      {"pedido", "ok", "dados"|"erro"}      resposta a um pedido
 
@@ -25,6 +26,7 @@ import json
 COTA = "cota"
 CHAMADA = "chamada"
 VAI_ANDAR = "vai_andar"
+ESQUECE = "esquece"
 REGISTRADORES = "registradores"
 RESPOSTA = "resposta"
 OLA = "ola"

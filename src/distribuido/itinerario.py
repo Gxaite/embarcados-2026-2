@@ -2,8 +2,12 @@
 
 A ordem e a do elevador coletivo (algoritmo SCAN): a cabine segue no sentido
 em que esta enquanto houver parada a frente, e so entao inverte. Paradas sao
-os andares de origem das chamadas que ainda esperam e os de destino das que
-ja embarcaram, mais os comandos manuais do central.
+os andares de destino das chamadas que ja embarcaram, os comandos manuais do
+central e as origens das que esperam, mas so das que vao no sentido da
+varredura: quem quer descer nao embarca numa cabine que ainda sobe (subiria
+para depois descer; na rasp52, 1 -> 0 levou 150 s no down-peak). A cabine vai
+ate a origem contraria mais distante, onde inverte, e as do caminho embarcam
+na volta. A mesma regra (escolhe_parada) faz a estimativa do despacho.
 
 Embarque e desembarque acontecem quando a porta abre no andar: e o instante
 que o enunciado usa para medir espera e viagem. Cada um vira um evento com
@@ -24,6 +28,43 @@ EVENTOS_GUARDADOS = 200
 ESPERA_URGENTE_S = 50.0
 # Distancia abaixo da qual a cabine ja esta no andar, so terminando de assentar.
 PERTO_DO_ANDAR_MM = 50.0
+
+
+def sentido_da_viagem(origem, destino):
+    """+1 sobe, -1 desce, None se o destino nao e conhecido."""
+    if destino is None:
+        return None
+    return 1 if destino > origem else -1
+
+
+def escolhe_parada(posicao_mm, sentido, obrigatorias, embarques, posicoes):
+    """(andar, sentido da varredura) da proxima parada, ou (None, 0) sem nada.
+
+    obrigatorias: andares de desembarque e comandos manuais. embarques: pares
+    (origem, sentido do passageiro); sentido None embarca em qualquer
+    varredura. posicoes: andar -> mm."""
+    andares = set(obrigatorias) | {a for a, _ in embarques}
+    if not andares:
+        return None, 0
+
+    def distancia(a):
+        return abs(posicoes[a] - posicao_mm)
+
+    if sentido == 0:
+        mais_perto = min(andares, key=distancia)
+        sentido = 1 if posicoes[mais_perto] > posicao_mm else -1
+    for varredura in (sentido, -sentido):
+        def a_frente(a):
+            return (posicoes[a] - posicao_mm) * varredura > 0
+        paradas = [a for a in obrigatorias if a_frente(a)] + \
+            [a for a, s in embarques if s in (varredura, None) and a_frente(a)]
+        if paradas:
+            return min(paradas, key=distancia), varredura
+        contrarias = [a for a, s in embarques if a_frente(a)]
+        if contrarias:
+            return max(contrarias, key=distancia), varredura
+    # A unica parada e exatamente onde a cabine esta, ainda sem nivelar.
+    return min(andares, key=distancia), sentido
 
 
 class Chamada:
@@ -70,6 +111,13 @@ class Itinerario:
                 registro=self._relogio() - float(espera_s))
             return True
 
+    def esquece(self, identificadores):
+        """Chamadas que o central descartou (a ESP32 foi reiniciada)."""
+        with self._trava:
+            esquecidas = [i for i in identificadores if self.chamadas.pop(i, None)]
+            self._concluidas.extend(esquecidas)
+            return esquecidas
+
     def manual(self, andar):
         with self._trava:
             if andar not in self.manuais:
@@ -107,19 +155,14 @@ class Itinerario:
             if abs(distancia) > PERTO_DO_ANDAR_MM:
                 self.sentido = 1 if distancia > 0 else -1
             return urgente
-        acima = [a for a in paradas if mapa.posicao[a] > posicao_mm]
-        abaixo = [a for a in paradas if mapa.posicao[a] < posicao_mm]
-        if not acima and not abaixo:
-            # A unica parada e exatamente onde a cabine esta, ainda sem nivelar.
-            return min(paradas, key=lambda a: abs(mapa.posicao[a] - posicao_mm))
-        if self.sentido == 0:
-            mais_perto = min(paradas, key=lambda a: abs(mapa.posicao[a] - posicao_mm))
-            self.sentido = 1 if mapa.posicao[mais_perto] > posicao_mm else -1
-        if self.sentido > 0 and not acima:
-            self.sentido = -1
-        elif self.sentido < 0 and not abaixo:
-            self.sentido = 1
-        return min(acima) if self.sentido > 0 else max(abaixo)
+        with self._trava:
+            obrigatorias = {c.destino for c in self.chamadas.values()
+                            if c.estado == EMBARCADA} | set(self.manuais)
+            embarques = [(c.origem, sentido_da_viagem(c.origem, c.destino))
+                         for c in self.chamadas.values() if c.estado == AGUARDANDO]
+        andar, self.sentido = escolhe_parada(posicao_mm, self.sentido, obrigatorias,
+                                             embarques, mapa.posicao)
+        return andar
 
     def _origem_urgente(self):
         agora = self._relogio()

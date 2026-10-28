@@ -10,6 +10,12 @@ Dois arquivos, com papeis diferentes:
 - viagens (CSV): uma linha por chamada concluida, so acrescentada. E o log
   persistente do requisito 6.2.5.
 
+Os ids da ESP32 sao sequenciais e recomecam em 1 a cada "Resetar simulacao"
+do dashboard. Cada reinicio abre uma epoca, e a chave de uma chamada (o id que
+vai as cabines e volta nos eventos) e epoca x 100000 + id da ESP32: sem isso a
+cabine ignorava uma chamada nova com o numero de uma ja concluida, que nunca
+era atendida, e um evento antigo concluia uma chamada nova na hora.
+
 Os instantes sao horario do relogio de parede (time.time()), para o log ser
 legivel. O instante de registro e o momento em que o central leu a chamada na
 fila do simulador: o registrador nao informa quando o passageiro a fez.
@@ -35,10 +41,14 @@ def _horario(instante):
         ".%01d" % int((instante % 1) * 10)
 
 
+CHAVES_POR_EPOCA = 100000
+
+
 class Chamada:
     def __init__(self, identificador, origem, destino, cabine, registro,
-                 embarque=None, desembarque=None):
+                 embarque=None, desembarque=None, id_esp32=None):
         self.id = identificador
+        self.id_esp32 = identificador if id_esp32 is None else id_esp32
         self.origem = origem
         self.destino = destino
         self.cabine = cabine
@@ -63,7 +73,8 @@ class Chamada:
         return self.desembarque - self.embarque
 
     def como_dicionario(self):
-        return {"id": self.id, "origem": self.origem, "destino": self.destino,
+        return {"id": self.id, "id_esp32": self.id_esp32,
+                "origem": self.origem, "destino": self.destino,
                 "cabine": self.cabine, "registro": self.registro,
                 "embarque": self.embarque, "desembarque": self.desembarque}
 
@@ -80,6 +91,8 @@ class RegistroDeChamadas:
         self.soma_viagem_s = 0.0
         self.recentes = []          # ultimas concluidas, para a interface
         self.carregadas = 0
+        self.epoca = 0
+        self.ultimo_id_esp32 = 0
 
     # ------------------------------------------------------------ disco
     def carrega(self):
@@ -95,8 +108,11 @@ class RegistroDeChamadas:
             for item in dados.get("pendentes", []):
                 chamada = Chamada(item["id"], item["origem"], item["destino"],
                                   item["cabine"], item["registro"],
-                                  item.get("embarque"), item.get("desembarque"))
+                                  item.get("embarque"), item.get("desembarque"),
+                                  item.get("id_esp32"))
                 self.pendentes[chamada.id] = chamada
+            self.epoca = dados.get("epoca", 0)
+            self.ultimo_id_esp32 = dados.get("ultimo_id_esp32", 0)
             self.concluidas = dados.get("concluidas", 0)
             self.soma_espera_s = dados.get("soma_espera_s", 0.0)
             self.soma_viagem_s = dados.get("soma_viagem_s", 0.0)
@@ -110,6 +126,8 @@ class RegistroDeChamadas:
             "concluidas": self.concluidas,
             "soma_espera_s": self.soma_espera_s,
             "soma_viagem_s": self.soma_viagem_s,
+            "epoca": self.epoca,
+            "ultimo_id_esp32": self.ultimo_id_esp32,
         }
         os.makedirs(os.path.dirname(self._arquivo_de_estado) or ".", exist_ok=True)
         temporario = self._arquivo_de_estado + ".tmp"
@@ -126,25 +144,47 @@ class RegistroDeChamadas:
             escritor = csv.writer(saida)
             if novo:
                 escritor.writerow(COLUNAS)
-            escritor.writerow((chamada.id, chamada.origem, chamada.destino,
+            escritor.writerow((chamada.id_esp32, chamada.origem, chamada.destino,
                                chamada.cabine, _horario(chamada.registro),
                                _horario(chamada.embarque),
                                _horario(chamada.desembarque),
                                "%.1f" % chamada.espera_s, "%.1f" % chamada.viagem_s))
 
     # --------------------------------------------------------- operacoes
-    def ja_atribuida(self, identificador, origem, destino):
+    def chave(self, id_esp32):
+        return self.epoca * CHAVES_POR_EPOCA + id_esp32
+
+    def ja_atribuida(self, id_esp32, origem, destino):
         """A chamada na cabeca da fila e uma que ja atribuimos e cujo pop se
         perdeu? (mesmo id, mesmos andares, ainda pendente)"""
         with self._trava:
-            chamada = self.pendentes.get(identificador)
+            chamada = self.pendentes.get(self.chave(id_esp32))
             return chamada is not None and (chamada.origem, chamada.destino) == \
                 (origem, destino)
 
-    def nova(self, identificador, origem, destino, cabine):
+    def observa(self, id_esp32, origem, destino):
+        """Chamada na cabeca da fila. Um id menor que o ultimo atribuido (ou o
+        mesmo, sem ser o pop perdido) e a ESP32 reiniciada: abre uma epoca e
+        descarta as pendentes, que nao existem mais no simulador. Devolve as
+        descartadas, ou None se nada mudou."""
         with self._trava:
-            chamada = Chamada(identificador, origem, destino, cabine, self._relogio())
-            self.pendentes[identificador] = chamada
+            if not self.ultimo_id_esp32 or id_esp32 > self.ultimo_id_esp32 or (
+                    id_esp32 == self.ultimo_id_esp32
+                    and self.ja_atribuida(id_esp32, origem, destino)):
+                return None
+            self.epoca += 1
+            self.ultimo_id_esp32 = 0
+            descartadas = list(self.pendentes.values())
+            self.pendentes.clear()
+            self._salva()
+            return descartadas
+
+    def nova(self, id_esp32, origem, destino, cabine):
+        with self._trava:
+            chamada = Chamada(self.chave(id_esp32), origem, destino, cabine,
+                              self._relogio(), id_esp32=id_esp32)
+            self.pendentes[chamada.id] = chamada
+            self.ultimo_id_esp32 = max(self.ultimo_id_esp32, id_esp32)
             self._salva()
             return chamada
 

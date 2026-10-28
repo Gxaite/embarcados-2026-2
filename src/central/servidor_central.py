@@ -231,6 +231,9 @@ class ServidorCentral:
                 return
             identificador = chamada["id"]
             origem, destino = chamada["origem"], chamada["destino"]
+            descartadas = self.registro.observa(identificador, origem, destino)
+            if descartadas is not None:
+                self._esquece(identificador, descartadas)
             if self.registro.ja_atribuida(identificador, origem, destino):
                 # A atribuicao valeu, mas o pop da rodada anterior falhou.
                 self._retira(identificador)
@@ -268,14 +271,13 @@ class ServidorCentral:
         if estado is None:
             return None
         paradas = set(estado.get("paradas") or [])
-        esperando = {}
         agora_de_parede = time.time()
         pendentes = self.registro.pendentes_da_cabine(cabine.numero)
+        chamadas = [{"origem": c.origem, "destino": c.destino,
+                     "embarcada": c.embarque is not None,
+                     "idade_s": agora_de_parede - c.registro} for c in pendentes]
         for chamada in pendentes:
             paradas.add(chamada.destino if chamada.embarque else chamada.origem)
-            if chamada.embarque is None:
-                idade = agora_de_parede - chamada.registro
-                esperando[chamada.origem] = max(idade, esperando.get(chamada.origem, 0))
         # A viagem e estimada na fatia de um terco do barramento, a Cota que a
         # cabine tem com as tres ocupadas, convertida pelo modelo de corrente
         # dela. Com a Cota de agora, alta enquanto as outras estao ociosas, a
@@ -284,7 +286,7 @@ class ServidorCentral:
         duty_previsto = duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
                                        estado.get("corrente_parada_ma"),
                                        estado.get("corrente_por_duty_ma"))
-        return dict(estado, paradas=sorted(paradas), esperando=esperando,
+        return dict(estado, paradas=sorted(paradas), chamadas_do_central=chamadas,
                     comprometidos=len(pendentes),
                     velocidade_por_duty=cabine.velocidade_por_duty,
                     duty_maximo=duty_previsto)
@@ -296,6 +298,16 @@ class ServidorCentral:
             # Fica na cabeca da fila; a proxima rodada ve que ja foi atribuida
             # e so repete o pop.
             self.log("MODBUS pop da chamada %d: %s" % (identificador, erro))
+
+    def _esquece(self, identificador, descartadas):
+        self.log("ESP32 reiniciada (chamada %d depois da %d): %d pendente(s) "
+                 "descartada(s), epoca %d" % (identificador, max(
+                     [c.id_esp32 for c in descartadas], default=0), len(descartadas),
+                     self.registro.epoca))
+        for numero, cabine in self.cabines.items():
+            ids = [c.id for c in descartadas if c.cabine == numero]
+            if ids and cabine.conectada:
+                cabine.cliente.envia({"tipo": p.ESQUECE, "ids": ids})
 
     def _envia_chamada(self, cabine, chamada):
         if cabine.conectada:
@@ -360,10 +372,10 @@ class ServidorCentral:
                 continue
             if evento["evento"] == "embarque":
                 self.log("embarque da chamada %d na cabine %d, andar %d (espera %.1f s)"
-                         % (chamada.id, cabine.numero, chamada.origem, chamada.espera_s))
+                         % (chamada.id_esp32, cabine.numero, chamada.origem, chamada.espera_s))
             else:
                 self.log("desembarque da chamada %d na cabine %d, andar %d "
-                         "(viagem %.1f s)" % (chamada.id, cabine.numero,
+                         "(viagem %.1f s)" % (chamada.id_esp32, cabine.numero,
                                               chamada.destino, chamada.viagem_s))
         if anterior is None or anterior.get("modo") != estado.get("modo"):
             self.log("cabine %d: %s" % (cabine.numero, estado.get("modo")))

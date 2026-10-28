@@ -314,6 +314,34 @@ def test_despacho_nao_empurra_espera_alem_de_90_s():
     assert escolhida == 2 and custos[1] > despacho.PENALIDADE_S
 
 
+def test_itinerario_nao_para_no_caminho_para_quem_vai_ao_contrario():
+    # Down-peak na rasp52: subindo, a cabine pegava no andar 1 quem ia ao
+    # terreo, e a viagem 1 -> 0 levava 150 s.
+    mapa = mapa_regular()
+    itinerario = Itinerario(relogio=lambda: 100.0)
+    itinerario.atribui(1, 1, 0)
+    itinerario.atribui(2, 4, 0)
+    itinerario.sentido = 1
+    assert itinerario.proxima_parada(100.0, mapa, None) == 4, \
+        "subindo, vai direto a origem contraria mais distante"
+    itinerario.porta_abriu(4)
+    assert itinerario.proxima_parada(mapa.posicao[4], mapa, None) == 1
+    itinerario.atribui(3, 2, 5)
+    # Descendo, quem quer subir no 2 fica para a volta.
+    assert itinerario.proxima_parada(mapa.posicao[4] - 500, mapa, None) == 1
+
+
+def test_despacho_estima_a_volta_para_quem_vai_ao_contrario():
+    subindo = estado_de_cabine(100.0)
+    subindo["sentido"] = "subindo"
+    subindo["chamadas_do_central"] = [
+        {"origem": 4, "destino": 0, "embarcada": False, "idade_s": 0.0}]
+    perto = despacho.custo(subindo, origem=1, destino=0)
+    mesma_direcao = despacho.custo(subindo, origem=1, destino=3)
+    # 1 -> 0 so embarca depois de a cabine ir ao 4 e voltar.
+    assert perto > mesma_direcao
+
+
 def test_despacho_respeita_a_lotacao():
     # Down-peak na rasp52: a mesma cabine recebia o andar inteiro e chegou ao
     # terreo com 11 passageiros (sobrecarga na ESP32).
@@ -469,3 +497,36 @@ def test_protocolo_ida_e_volta():
         protocolo.decodifica(b'{"sem": "tipo"}')
     with pytest.raises(protocolo.MensagemInvalida):
         protocolo.decodifica(b"lixo")
+
+
+# ------------------------------------------------- reinicio da ESP32
+def test_reinicio_da_esp32_abre_epoca_e_descarta_as_pendentes(tmp_path):
+    from src.central.registro import RegistroDeChamadas
+    registro = RegistroDeChamadas(str(tmp_path / "estado.json"), str(tmp_path / "v.csv"))
+    antiga = registro.nova(47, 0, 5, cabine=2)
+    registro.nova(48, 0, 3, cabine=1)
+    # Pop perdido: a mesma chamada na cabeca da fila nao e reinicio.
+    assert registro.observa(48, 0, 3) is None
+    assert registro.observa(49, 2, 4) is None
+    # "Resetar simulacao": os ids recomecam.
+    descartadas = registro.observa(1, 0, 4)
+    assert {c.id_esp32 for c in descartadas} == {47, 48}
+    assert not registro.lista_pendentes()
+    nova = registro.nova(47, 1, 5, cabine=2)
+    assert nova.id != antiga.id and nova.id_esp32 == 47
+    # Evento antigo da chamada 47 nao conclui a nova.
+    assert registro.aplica_evento(2, {"id": antiga.id, "evento": "desembarque",
+                                      "t": 1.0}) is None
+    # A epoca sobrevive a reinicializacao do central.
+    outro = RegistroDeChamadas(str(tmp_path / "estado.json"), str(tmp_path / "v.csv"))
+    outro.carrega()
+    assert outro.epoca == registro.epoca and outro.pendentes[nova.id].id_esp32 == 47
+
+
+def test_cabine_esquece_as_chamadas_descartadas():
+    itinerario = Itinerario(relogio=lambda: 100.0)
+    itinerario.atribui(47, 0, 5)
+    assert itinerario.esquece([47, 99]) == [47]
+    assert itinerario.paradas() == set()
+    assert not itinerario.atribui(47, 0, 5), "esquecida nao volta pelo reenvio"
+
