@@ -157,10 +157,15 @@ evento.
   integração condicional e separação do integral (só acumula a menos de 50 mm
   do destino). A saída vira duty de 0 a 100% e direção (`DIR1`/`DIR2`).
 - Rampa de aceleração de 150 %/s na subida do duty; reduzir é imediato.
-- Atrito estático: parado, com a saída abaixo de 12% e erro acima de 30 mm, a
-  saída vai ao arranque; abaixo de 30 mm o integral é congelado (sem windup) e
-  o erro residual é corrigido por pulsos de arranque, cada um seguido de freio
-  e nova medição. A cabine só é dada como chegada parada e a menos de 6 mm.
+- Cruzeiro limitado a 55% de duty: acima disso o Python perde bordas do
+  encoder (19 mm em 3000 mm a 60% na rasp34), e a contagem que escorrega leva
+  a porta fora do nível.
+- Chegada: a menos de 6 mm do alvo e abaixo de 60 mm/s a cabine freia e
+  assenta. Atrito estático: parada, com a saída abaixo de 12% e erro acima de
+  30 mm, a saída vai ao arranque; abaixo de 30 mm o integral é congelado (sem
+  windup) e o erro residual é corrigido por pulsos de arranque, cada um seguido
+  de freio e nova medição. A cabine só é dada como chegada parada e a menos de
+  6 mm, e a porta só abre dentro de ±10 mm.
 - Fim de curso: 300 mm além dos andares extremos calibrados o movimento é
   cortado; travamento (duty sem deslocamento por 2,5 s) também.
 
@@ -177,12 +182,17 @@ evento.
   bordas. O mapa vai para `dados/calibracao_cabineN.json`.
 - **Reancoragem**: cada borda cruzada na operação é classificada (inferior ou
   superior, pelo sentido) e a contagem é corrigida para o valor calibrado
-  daquela borda. Correção acima de 80 mm é recusada como ruído.
+  daquela borda. Correção acima de 80 mm numa borda isolada é recusada como
+  ruído; duas bordas seguidas que pedem a mesma correção (a 25 mm) confirmam um
+  deslize da contagem, que é aplicado.
 
 **Cota de Potência e Modo Degradado** (`cota.py`, `src/central/cotas.py`)
 
 - A cabine satura o PID em `duty_max = cota / 6000 × 100`, aplicado no
-  instante em que a Cota chega e um ciclo antes de ela vencer.
+  instante em que a Cota chega e um ciclo antes de ela vencer. Abaixo disso,
+  pelo modelo de corrente que ela mede na ESP32 (repouso de ~300 mA mais
+  ~54 mA por ponto de duty), o teto é o maior duty cuja corrente prevista cabe
+  na Cota com 5% de folga.
 - O central reparte `barramento_max_ma`: 1000 mA para cada cabine, o resto
   para as que têm viagem, até 6000 mA cada. Uma Cota enviada conta como em uso
   até a cabine confirmar uma posterior (número de sequência no relatório) ou
@@ -196,18 +206,27 @@ evento.
 **Despacho por Destino** (`src/central/despacho.py`, `src/distribuido/itinerario.py`)
 
 - Cada chamada vai para a cabine de menor custo estimado: tempo até a porta
-  abrir na origem, percorrendo o itinerário da cabine na ordem em que ela o
-  executa (SCAN), mais o atraso imposto aos passageiros já atribuídos e uma
-  fração da viagem do passageiro novo. Origem que já é parada da cabine não
-  custa parada nova: é o agrupamento de passageiros.
+  abrir na origem, mais o atraso imposto aos passageiros já atribuídos e uma
+  fração da viagem do passageiro novo. O custo sai de uma simulação do
+  itinerário da cabine com a mesma regra que ela executa (`escolhe_parada`):
+  SCAN que só para no caminho para quem vai no sentido da varredura; quem vai
+  ao contrário embarca na volta, e a origem contrária mais distante é o ponto
+  de inversão. Origem que já é parada da cabine não custa parada nova: é o
+  agrupamento de passageiros.
+- Lotação: a ESP32 acusa sobrecarga com 8 a bordo. O despacho conta os
+  passageiros a bordo instante a instante no itinerário simulado; a cabine que
+  passaria de 7 não recebe a chamada, e sem nenhuma com lugar ela espera na
+  fila da ESP32.
 - Limite de 90 s: a viagem é estimada na velocidade da fatia de um terço do
-  barramento (a Cota que a cabine tem com as três ocupadas, corrigida pelo
-  fator de corrente medido), e a chamada que levaria alguém além de 75 s de
-  espera é penalizada. Na cabine, uma origem esperando há mais de 50 s passa
-  na frente da varredura. Parada num andar, a cabine informa o sentido da
-  varredura, e a parada no andar em que ela está entra primeiro na estimativa.
+  barramento (a Cota que a cabine tem com as três ocupadas), e a chamada que
+  levaria alguém além de 65 s de espera é penalizada. Na cabine, uma origem
+  esperando há mais de 50 s passa na frente da varredura. No up-peak
+  (`cenario_ativo` = 1) a cabine ociosa volta ao térreo.
 - Só entram cabines calibradas e operando. Sem nenhuma, a chamada fica na fila
   do simulador: toda chamada retirada é atribuída e atendida.
+- "Resetar simulação" recomeça os ids da ESP32 em 1. Um id menor que o último
+  atribuído abre uma época nova: a chave de cada chamada é época × 100000 + id,
+  as pendentes antigas são descartadas e as cabines as esquecem.
 - Fluxo da Seção 5.3: lê a fila, atribui (offsets 9 e 10 numa escrita só),
   retira (`chamada_pop`, sem repetir às cegas) e avisa a cabine.
 - Log persistente em `dados/viagens.csv` (id, origem, destino, cabine,
@@ -216,7 +235,8 @@ evento.
 
 **Porta e cortina** (`src/distribuido/porta.py`)
 
-- Abrir, esperar `tempo_aberta_s`, fechar; a cabine só anda com a porta
+- Abrir, esperar `tempo_aberta_s` (1 s: embarque e desembarque contam quando
+  ela abre), fechar; a cabine só anda com a porta
   confirmada fechada pelo MODBUS. Cortina por interrupção com debounce de
   20 ms: obstruída, o fechar não é enviado; obstrução durante o fechamento
   inibe o ciclo, que é reiniciado 0,5 s depois de a obstrução cessar.
@@ -274,10 +294,21 @@ O que a placa mostrou e o simulador não:
   cerca de 54 mA por ponto de duty (1212 mA a 17%, 2300 mA a 37%, 3000 mA a
   56%). O simulador passou a usar esse modelo;
 - no gráfico acima as cabines 2 e 3 cruzam a 37% com Cota de 3980 mA, quando
-  a corrente medida permitia uns 50%. O fator de corrente (corrente medida
-  sobre a da fórmula) tinha subido a 1,95: a leitura de corrente chega até
-  0,5 s atrasada pelo central e era dividida pelo duty do instante, já menor
-  numa desaceleração. O divisor agora é o maior duty do último segundo;
+  a corrente medida permitia mais: um fator único sobre a fórmula, medido em
+  duty baixo onde os 300 mA pesam (e numa leitura até 0,5 s atrasada), travava
+  o cruzeiro e deixava 40% do barramento ocioso. O teto agora sai do modelo de
+  corrente medido, limitado aos 55% em que o encoder acompanha;
+- a ESP32 acusa sobrecarga (bit `0x0010` de `falha`) com 8 passageiros a bordo
+  e espera acima de 90 s (`0x0020`); o despacho passou a respeitar a lotação de
+  7 e a não pegar no caminho quem vai ao contrário (viagens 2 → 0 de 168 s no
+  down-peak);
+- a ESP32 gera cerca de 75 chamadas num cenário de 5 minutos, contra ~50 no
+  simulador: os picos ficam no limite do que três cabines com 7 lugares
+  transportam, e cada segundo de parada conta (freio de chegada a 6 mm, Kd 8,
+  porta aberta 1 s);
+- "Resetar simulação" com o programa rodando recomeça os ids das chamadas e
+  muda a posição das cabines por baixo da calibração. O central detecta os ids
+  recomeçando; a calibração só volta a valer subindo as cabines de novo;
 
 - na primeira rodada a ESP32 ligou a falha `0x0004` nas três cabines uns 90 mm
   abaixo do térreo, no começo da calibração, e passou a ignorar o motor
@@ -317,13 +348,24 @@ numa viagem de 3 andares com Cota de 4000 mA (`python3 -m ferramentas.experiment
 | Kd | 1 andar | 3 andares | Observação |
 |:-:|:-:|:-:|:--|
 | 40 | 24,4 s | 33,7 s | amortecimento excessivo: constante de tempo Kd/Kp·T = 4 s na aproximação; a derivada sobre a contagem quantizada em 1 mm faz o duty chavear |
-| **15** | **11,2 s** | **20,3 s** | escolhido: sobrepasso de até 4 mm, sem pulsos de renivelamento |
+| 15 | 11,2 s | 20,3 s | sobrepasso de até 4 mm, sem pulsos de renivelamento |
 | 5 | 9,0 s | 18,6 s | passa cerca de 19 mm do andar e volta por pulsos |
 
 Duas correções saíram da sintonia: o integral, acumulado na viagem inteira,
 fazia a cabine passar 30 mm do andar com qualquer Kd (daí a separação do
 integral), e com Kd = 40 a cabine levava mais tempo na aproximação do que em
 toda a viagem.
+
+Na placa, com Kd = 15, a aproximação levava uns 8 s nos últimos 900 mm: com
+constante de tempo Kd/Kp·T = 1,5 s, o PID chegava em curva exponencial e só
+freava a 3 mm. Para os picos de tráfego a chegada foi refeita (simulador, Cota
+de 4000 mA, um andar):
+
+| Ajuste | 1 andar | Passa do andar | Erro final | Pulsos |
+|:--|:-:|:-:|:-:|:-:|
+| Kd 15, freio a 3 mm e 40 mm/s | 12,2 a 13,0 s | 2 a 4 mm | até 4,2 mm | 0 |
+| Kd 8, freio a 3 mm e 40 mm/s | 10,0 a 10,5 s | ~22 mm | até 5,8 mm | 1 |
+| **Kd 8, freio a 6 mm e 60 mm/s** | **8,5 a 8,8 s** | — | **até 2,7 mm** | **0** |
 
 ![Chegada](docs/imagens/pid_chegada.png)
 
@@ -338,20 +380,23 @@ no mesmo ciclo e nunca o ultrapassa:
 #### Cenários de Tráfego
 
 Sistema completo, três cenários de 5 minutos, com semente fixa e uma chamada a
-cada 5 s em média (`python3 -m ferramentas.experimentos cenarios`):
+cada 7 s em média (`python3 -m ferramentas.experimentos cenarios`), com a
+lotação, o sentido das paradas, a volta ao térreo e o modelo de corrente:
 
 | Cenário | Chamadas | Espera média | Espera máxima | Viagem média | Por cabine (1/2/3) |
 |:--|:-:|:-:|:-:|:-:|:-:|
-| Up-peak | 50 | 22,7 s | 76,7 s | 37,5 s | 15 / 16 / 19 |
-| Down-peak | 52 | 27,6 s | **95,5 s** | 35,6 s | 16 / 19 / 17 |
-| Interfloor | 46 | 18,9 s | 73,4 s | 41,4 s | 15 / 15 / 16 |
+| Up-peak | 50 | 16,6 s | 58,9 s | 30,0 s | 16 / 18 / 16 |
+| Down-peak | 52 | 19,1 s | 62,3 s | 32,8 s | 13 / 19 / 20 |
+| Interfloor | 46 | 17,5 s | 59,4 s | 27,5 s | 17 / 12 / 17 |
 
-Nenhuma violação de porta, de fim de curso, de Cota ou de barramento nos três
-(`docs/experimentos/cenarios.json`). No down-peak uma chamada passou dos 90 s:
-a proteção do limite (penalidade no despacho e prioridade, na cabine, para
-origem esperando há mais de 50 s) derrubou o pior caso do interfloor de 98 s
-para 73 s, mas não cobre todos os casos com a velocidade do simulador. Estes
-números são do simulador; os da bancada dependem da velocidade real do motor.
+Nenhuma violação de porta, de fim de curso, de lotação, de Cota ou de
+barramento nos três (`docs/experimentos/cenarios.json`). Na primeira versão
+deste experimento o down-peak teve 95,5 s de espera máxima; as causas, cada
+uma reproduzida num teste de unidade, foram o sentido da varredura invertido
+por sobrepasso no andar urgente, a estimativa do despacho com o sentido da
+cabine parada errado e a velocidade estimada pela Cota do momento, que cai
+quando as outras cabines arrancam. Estes números são do simulador, que gera
+menos chamadas que a ESP32.
 
 ![Barramento de Potência](docs/imagens/potencia.png)
 

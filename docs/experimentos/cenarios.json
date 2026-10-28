@@ -1,35 +1,35 @@
 {
   "up-peak": {
     "chamadas": 50,
-    "espera_media_s": 22.673603033440084,
-    "espera_maxima_s": 76.66370430799998,
-    "viagem_media_s": 37.46593223327991,
+    "espera_media_s": 16.563438489499678,
+    "espera_maxima_s": 58.92813116899924,
+    "viagem_media_s": 29.98769391356029,
     "por_cabine": {
-      "1": 15,
-      "2": 16,
-      "3": 19
+      "1": 16,
+      "2": 18,
+      "3": 16
     }
   },
   "down-peak": {
     "chamadas": 52,
-    "espera_media_s": 27.606730045038464,
-    "espera_maxima_s": 95.5051525859999,
-    "viagem_media_s": 35.62874362782699,
+    "espera_media_s": 19.120721928711855,
+    "espera_maxima_s": 62.299540739000804,
+    "viagem_media_s": 32.7778398437687,
     "por_cabine": {
-      "1": 16,
+      "1": 13,
       "2": 19,
-      "3": 17
+      "3": 20
     }
   },
   "interfloor": {
     "chamadas": 46,
-    "espera_media_s": 18.89600140413048,
-    "espera_maxima_s": 73.4286836049996,
-    "viagem_media_s": 41.36101583091299,
+    "espera_media_s": 17.45167829291313,
+    "espera_maxima_s": 59.4413526549979,
+    "viagem_media_s": 27.452337317043835,
     "por_cabine": {
-      "1": 15,
-      "2": 15,
-      "3": 16
+      "1": 17,
+      "2": 12,
+      "3": 17
     }
   },
   "violacoes": {
@@ -38,13 +38,13 @@
     "3": []
   },
   "reancoragens": {
-    "1": 66,
-    "2": 68,
-    "3": 71
+    "1": 67,
+    "2": 60,
+    "3": 58
   },
   "transicoes_perdidas": {
-    "1": 50,
-    "2": 60,
+    "1": 49,
+    "2": 67,
     "3": 62
   }
 }
