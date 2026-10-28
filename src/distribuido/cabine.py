@@ -49,6 +49,11 @@ DEGRADADO = "degradado"
 # Reancoragem: uma borda medida longe demais da calibrada nao e deriva, e
 # ruido ou bandeirola errada, e e recusada.
 CORRECAO_MAXIMA_MM = 80.0
+# Acima da correcao maxima, duas bordas seguidas que concordam confirmam um
+# deslize da contagem. Bordas do mesmo lado distam um vao: ate meio vao, a mais
+# proxima e a certa.
+DESLIZE_MAXIMO_MM = 1200.0
+CONCORDANCIA_DO_DESLIZE_MM = 25.0
 # Folga para escolher o andar de pouso no Modo Degradado: o andar tem de estar
 # a frente o bastante para a cabine frear nele a velocidade minima.
 FOLGA_DO_POUSO_MM = 60.0
@@ -107,6 +112,7 @@ class ServidorDistribuido:
         self._falhou_em = None
         self.reancoragens = 0
         self.ultima_correcao_mm = 0.0
+        self._deslize_pendente = None
 
         self._pedidos = {}
         self._sequencia = itertools.count(1)
@@ -331,23 +337,47 @@ class ServidorDistribuido:
             if self.calibracao.ativa:
                 self.calibracao.ao_cruzar(borda)
                 return
+            if self.mapa is None or borda.lado is None:
+                return
             # Operacao: corrige a contagem para o valor calibrado da borda.
-            if self.mapa is not None and borda.lado is not None:
-                resultado = self.mapa.borda_cruzada(
-                    borda.contagem, borda.lado, distancia_maxima_mm=CORRECAO_MAXIMA_MM
-                )
-                if resultado is not None:
-                    andar, contagem_calibrada = resultado
-                    delta_mm = contagem_calibrada - borda.contagem
+            resultado = self.mapa.borda_cruzada(borda.contagem, borda.lado,
+                                                distancia_maxima_mm=CORRECAO_MAXIMA_MM)
+            if resultado is None:
+                resultado = self._deslize_confirmado(borda)
+                if resultado is None:
+                    return
+            else:
+                self._deslize_pendente = None
+            andar, contagem_calibrada = resultado
+            delta_mm = contagem_calibrada - borda.contagem
+            if abs(delta_mm) < 1.0:
+                return
+            self.encoder.desloca(delta_mm)
+            self.malha.reancorou(delta_mm)
+            self.reancoragens += 1
+            self.ultima_correcao_mm = delta_mm
+            if abs(delta_mm) >= 3.0:
+                self._log("reancorado na borda %s do andar %d: %+.0f mm"
+                          % (borda.lado, andar, delta_mm))
 
-                    if abs(delta_mm) >= 1.0:
-                        self.encoder.desloca(delta_mm)
-                        self.malha.reancorou(delta_mm)
-                        self.reancoragens += 1
-                        self.ultima_correcao_mm = delta_mm
-                        if abs(delta_mm) >= 3.0:
-                            self._log("reancorado na borda %s do andar %d: %+.0f mm"
-                                      % (borda.lado, andar, delta_mm))
+    def _deslize_confirmado(self, borda):
+        """Correcao acima de CORRECAO_MAXIMA_MM: ruido numa borda isolada, ou a
+        contagem que deslizou de vez (transicoes perdidas numa rajada). Duas
+        bordas seguidas pedindo a mesma correcao sao deslize, e ele e aplicado.
+        Recusado sempre, o erro ficava para sempre: no simulador a cabine
+        chegou ao andar 4 com 160 mm de erro e pediu a porta fora do nivel."""
+        achada = self.mapa.borda_cruzada(borda.contagem, borda.lado, DESLIZE_MAXIMO_MM)
+        if achada is None:
+            return None
+        delta_mm = achada[1] - borda.contagem
+        pendente, self._deslize_pendente = self._deslize_pendente, delta_mm
+        if pendente is None or abs(delta_mm - pendente) > CONCORDANCIA_DO_DESLIZE_MM:
+            self._log("borda %s do andar %d pede %+.0f mm, acima de %.0f: esperando outra"
+                      % (borda.lado, achada[0], delta_mm, CORRECAO_MAXIMA_MM))
+            return None
+        self._deslize_pendente = None
+        self._log("contagem deslizou %+.0f mm, confirmado por duas bordas" % delta_mm)
+        return achada
 
     def _ao_mudar_cortina(self, nivel):
         with self._trava:
