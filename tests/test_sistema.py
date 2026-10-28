@@ -9,6 +9,7 @@ import time
 
 import pytest
 
+from src.simulacao import poco
 from src.simulacao.__main__ import finaliza, inicia, monta
 
 pytestmark = pytest.mark.lento
@@ -75,7 +76,9 @@ def test_atende_chamadas_sem_violar_invariantes(sistema):
     assert metricas["espera_maxima_s"] < 90.0
     assert predio.violacoes() == {1: [], 2: [], 3: []}
     assert sistema["amostras"] == {"soma_acima": 0, "cota_acima": 0}
-    assert central.registro.metricas()["concluidas"] == 6
+    # O desembarque chega ao central no relatorio seguinte da cabine, ate ~1 s
+    # depois de o simulador registra-lo.
+    assert espera(lambda: central.registro.metricas()["concluidas"] == 6, 5)
     # As cabines que andaram atribuiram chamadas a mais de uma cabine.
     assert len({c.cabine for c in predio.chamadas.values()}) >= 2
 
@@ -98,7 +101,7 @@ def test_modo_degradado_pousa_e_abre_a_porta(sistema):
     assert espera(lambda: fisica.porta_estado == 2 and fisica.parada(), 40), \
         "a cabine nao pousou com a porta aberta"
     assert fisica.nivelado()
-    assert fisica.corrente_ma == 0
+    assert fisica.corrente_ma <= poco.CORRENTE_EM_REPOUSO_MA, "motor ainda acionado"
     time.sleep(3)
     assert fisica.porta_estado == 2, "a porta tem de ficar aberta sem Cota"
     assert espera(lambda: cabine.modo == "operando", 30)

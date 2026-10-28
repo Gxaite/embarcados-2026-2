@@ -19,6 +19,7 @@ reancoragem nunca aconteca no meio de um ciclo da malha.
 import itertools
 import threading
 import time
+from collections import deque
 
 from ..controle.cortina import Cortina
 from ..controle.motor import Motor
@@ -54,6 +55,11 @@ FOLGA_DO_POUSO_MM = 60.0
 # Para trocar o destino no meio da viagem por uma parada nova no caminho.
 TEMPO_DE_FRENAGEM_S = 1.0
 FOLGA_DE_FRENAGEM_MM = 150.0
+# A leitura de corrente chega ate 0,5 s atrasada pelo central. Dividida pelo
+# duty de agora numa desaceleracao, ela inflava o fator de corrente (1,95 na
+# rasp52, contra 1,04 em cruzeiro) e a cabine andava ate 40% mais devagar que
+# a Cota permitia. O divisor e o maior duty do ultimo 1 s.
+CICLOS_DA_JANELA_DE_DUTY = 20
 
 
 def _imprime(texto):
@@ -94,6 +100,7 @@ class ServidorDistribuido:
         self.mapa = None
         self.modo = AGUARDANDO_CENTRAL
         self.registradores = {}
+        self._duties = deque(maxlen=CICLOS_DA_JANELA_DE_DUTY)
         self.andar_alvo = None
         self._andar_da_porta = None
         self._pouso = None
@@ -156,6 +163,7 @@ class ServidorDistribuido:
             self._ciclo_operando()
         self.porta.passo()
         self.malha.passo(malha_mod.PERIODO_S)
+        self._duties.append(self.malha.comando)
 
     # ------------------------------------------------------ calibracao
     def _ciclo_sem_mapa(self):
@@ -393,7 +401,8 @@ class ServidorDistribuido:
                 # log, o travamento que vem em seguida nao tem explicacao.
                 self._log("ESP32: registrador falha 0x%04X -> 0x%04X (posicao MODBUS %s mm)"
                           % (anterior, dados["falha"], dados.get("posicao_mm")))
-            self.cota.mede_corrente(dados.get("corrente_ma"), self.malha.comando)
+            duty = max((abs(d) for d in self._duties), default=abs(self.malha.comando))
+            self.cota.mede_corrente(dados.get("corrente_ma"), duty)
             if "porta_estado" in dados:
                 self.porta.registradores(dados["porta_estado"], self._relogio())
 
