@@ -181,10 +181,19 @@ não mostra nada, está no envio.
 
 ## 10. Entrega Final
 
-Os quatro processos rodam na mesma placa, dentro do `tmux` (seção 1):
+Os quatro processos rodam na mesma placa, dentro do `tmux` (seção 1). O
+roteiro abaixo está automatizado: o teste sobe tudo, conduz cada item, pede
+na hora certa as duas ações no dashboard (cortina e quiosque/cenário) e
+imprime o relatório, salvo com logs e CSVs em `dados/teste_<data>_<hora>/`:
 
 ```bash
 git pull
+python3 -m ferramentas.teste_placa             # ~25 min; --pula despacho reinicio encurta
+```
+
+Para operar à mão, com o painel do central:
+
+```bash
 ferramentas/sobe_tudo.sh --registra
 ```
 

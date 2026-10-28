@@ -292,6 +292,17 @@ python3 -m pytest tests/ -q -m "not lento"   # unidades, segundos
 python3 -m pytest tests/ -q                  # inclui o sistema completo no simulador (minutos)
 ```
 
+Teste de aceitação de ponta a ponta, na placa (dentro do `tmux`) ou no
+simulador: sobe os quatro processos, percorre o roteiro da seção 10 do
+[guia da bancada](docs/BANCADA.md), vigia os invariantes da Seção 7.5 pelos
+registradores MODBUS e grava logs, CSVs dos gráficos e relatório em
+`dados/teste_<data>_<hora>/`:
+
+```bash
+python3 -m ferramentas.teste_placa             # na Raspberry Pi
+python3 -m ferramentas.teste_placa --simulado  # sem placa
+```
+
 ## Entregas anteriores
 
 ### Entrega 1: GPIO
