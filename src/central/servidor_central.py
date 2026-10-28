@@ -245,7 +245,8 @@ class ServidorCentral:
         paradas = set(estado.get("paradas") or [])
         esperando = {}
         agora_de_parede = time.time()
-        for chamada in self.registro.pendentes_da_cabine(cabine.numero):
+        pendentes = self.registro.pendentes_da_cabine(cabine.numero)
+        for chamada in pendentes:
             paradas.add(chamada.destino if chamada.embarque else chamada.origem)
             if chamada.embarque is None:
                 idade = agora_de_parede - chamada.registro
@@ -258,6 +259,7 @@ class ServidorCentral:
         duty_previsto = duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
                                        estado.get("fator_de_corrente") or 1.0)
         return dict(estado, paradas=sorted(paradas), esperando=esperando,
+                    comprometidos=len(pendentes),
                     velocidade_por_duty=cabine.velocidade_por_duty,
                     duty_maximo=duty_previsto)
 

@@ -32,6 +32,12 @@ NO_ANDAR_MM = 10.0
 ESPERA_MAXIMA_S = 90.0
 FOLGA_DA_ESPERA_S = 15.0
 PENALIDADE_S = 1000.0
+# A ESP32 acusa sobrecarga (bit 0x0010 de `falha`) com 8 passageiros a bordo:
+# na rasp52 ela ligou nas tres cabines no terreo, quando o agrupamento do
+# up-peak embarcou 8 de uma vez. As chamadas atribuidas e nao concluidas de uma
+# cabine sao o pior caso de lotacao: no up-peak todos embarcam no terreo, no
+# down-peak ninguem desce antes dele.
+LOTACAO = 7
 
 
 def _ordem_scan(posicao_mm, sentido, paradas, posicoes):
@@ -72,7 +78,8 @@ def custo(estado, origem, destino):
     """Segundos estimados para atender a chamada nesta cabine.
 
     estado["esperando"] e {andar de origem: ha quanto tempo a chamada mais
-    antiga ali espera}, das chamadas ja atribuidas a esta cabine."""
+    antiga ali espera}, das chamadas ja atribuidas a esta cabine, e
+    estado["comprometidos"] quantas delas ainda nao desembarcaram."""
     posicoes = {int(a): v["posicao_mm"] for a, v in (estado.get("mapa") or {}).items()}
     if not posicoes:
         posicoes = {a: a * VAO_MM for a in range(6)}
@@ -111,6 +118,8 @@ def custo(estado, origem, destino):
     estouro = max(previstas) - limite
     if estouro > 0:
         total += PENALIDADE_S + estouro
+    if (estado.get("comprometidos") or 0) >= LOTACAO:
+        total += PENALIDADE_S
     return total
 
 

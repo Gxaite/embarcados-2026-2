@@ -399,8 +399,10 @@ class ServidorDistribuido:
             if dados.get("falha", anterior) != anterior:
                 # A ESP32 pode bloquear o motor com falha ativa: sem isto no
                 # log, o travamento que vem em seguida nao tem explicacao.
-                self._log("ESP32: registrador falha 0x%04X -> 0x%04X (posicao MODBUS %s mm)"
-                          % (anterior, dados["falha"], dados.get("posicao_mm")))
+                self._log("ESP32: registrador falha 0x%04X -> 0x%04X (posicao MODBUS %s mm, "
+                          "%s passageiros, %s kg)"
+                          % (anterior, dados["falha"], dados.get("posicao_mm"),
+                             dados.get("passageiros"), dados.get("carga_kg")))
             duty = max((abs(d) for d in self._duties), default=abs(self.malha.comando))
             self.cota.mede_corrente(dados.get("corrente_ma"), duty)
             if "porta_estado" in dados:

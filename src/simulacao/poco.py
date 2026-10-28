@@ -40,6 +40,10 @@ FECHADA, ABRINDO, ABERTA, FECHANDO, OBSTRUIDA = range(5)
 FALHA_FIM_DE_CURSO = 0x01
 FALHA_PORTA_FORA_DE_NIVEL = 0x02
 FALHA_ANDOU_DE_PORTA_ABERTA = 0x04
+# Na rasp52 (28/10/2026) a ESP32 acusou "sobrecarga" no bit 0x0010 quando a
+# cabine chegou a 8 passageiros a bordo.
+FALHA_SOBRECARGA = 0x10
+LOTACAO = 7
 
 _CICLO = (0b00, 0b01, 0b11, 0b10)
 

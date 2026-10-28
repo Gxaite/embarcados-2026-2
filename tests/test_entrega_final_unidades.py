@@ -298,6 +298,16 @@ def test_despacho_nao_empurra_espera_alem_de_90_s():
     assert escolhida == 2 and custos[1] > despacho.PENALIDADE_S
 
 
+def test_despacho_respeita_a_lotacao():
+    # Down-peak na rasp52: a mesma cabine recebia o andar inteiro e chegou ao
+    # terreo com 11 passageiros (sobrecarga na ESP32).
+    cheia = estado_de_cabine(6000.0, paradas=(2, 0))
+    cheia["comprometidos"] = despacho.LOTACAO
+    livre = estado_de_cabine(15000.0)
+    escolhida, custos = despacho.escolhe({1: cheia, 2: livre}, origem=2, destino=0)
+    assert escolhida == 2 and custos[1] > despacho.PENALIDADE_S
+
+
 def test_despacho_segue_a_varredura_da_cabine_parada_no_andar():
     # Up-peak no simulador: parada no andar 1 com passageiros para 2, 3 e 4, a
     # cabine sobe antes de voltar ao terreo. Estimada como descendo, recebeu a

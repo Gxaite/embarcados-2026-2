@@ -155,6 +155,11 @@ class Esp32Predio(Esp32Simulada):
                 if chamada.embarque is None and chamada.origem == andar:
                     chamada.embarque = agora
                     fisica.passageiros += 1
+                    if fisica.passageiros > poco.LOTACAO:
+                        fisica.falha |= poco.FALHA_SOBRECARGA
+                        fisica.violacoes.append(
+                            (agora, "sobrecarga: %d passageiros no andar %d"
+                             % (fisica.passageiros, andar)))
                 elif chamada.embarque is not None and chamada.desembarque is None \
                         and chamada.destino == andar and chamada.embarque < agora:
                     chamada.desembarque = agora
