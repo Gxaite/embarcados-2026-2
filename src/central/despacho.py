@@ -31,9 +31,10 @@ PESO_DA_VIAGEM = 0.20
 VAO_MM = 3000.0
 NO_ANDAR_MM = 10.0
 # Invariante da Secao 7.5: ninguem espera mais de 90 s pelo embarque. A
-# estimativa tem erro, entao o limite usado aqui tem folga.
+# estimativa tem erro, entao o limite usado aqui tem folga: na rasp52 ela saiu
+# otimista, e com 15 s de folga uma chamada do interfloor esperou 92,5 s.
 ESPERA_MAXIMA_S = 90.0
-FOLGA_DA_ESPERA_S = 15.0
+FOLGA_DA_ESPERA_S = 25.0
 PENALIDADE_S = 1000.0
 # A ESP32 acusa sobrecarga (bit 0x0010 de `falha`) com 8 passageiros a bordo:
 # na rasp52 ela ligou nas tres cabines no terreo, quando o agrupamento do
