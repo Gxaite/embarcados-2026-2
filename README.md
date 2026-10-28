@@ -156,7 +156,7 @@ evento.
   medida (troca de destino no meio da viagem não dá chute), anti-windup por
   integração condicional e separação do integral (só acumula a menos de 50 mm
   do destino). A saída vira duty de 0 a 100% e direção (`DIR1`/`DIR2`).
-- Rampa de aceleração de 100 %/s na subida do duty; reduzir é imediato.
+- Rampa de aceleração de 150 %/s na subida do duty; reduzir é imediato.
 - Atrito estático: parado, com a saída abaixo de 12% e erro acima de 30 mm, a
   saída vai ao arranque; abaixo de 30 mm o integral é congelado (sem windup) e
   o erro residual é corrigido por pulsos de arranque, cada um seguido de freio

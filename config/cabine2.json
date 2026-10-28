@@ -20,10 +20,10 @@
     "kd": 8.0
   },
   "calibracao": {
-    "duty_porcento": 35.0,
+    "duty_porcento": 45.0,
     "arquivo": "dados/calibracao_cabine2.json"
   },
   "porta": {
-    "tempo_aberta_s": 1.5
+    "tempo_aberta_s": 1.0
   }
 }
