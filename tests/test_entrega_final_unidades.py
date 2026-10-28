@@ -367,6 +367,12 @@ def test_lotacao_conta_quem_desce_no_caminho():
     assert despacho.custo(cheia, origem=4, destino=0) is None
 
 
+def test_lotacao_conta_o_embarque_antes_do_desembarque_na_mesma_parada():
+    # 7 a bordo descendo ao 3; quem embarca no 3 entraria junto com eles saindo.
+    cheia = cabine_com_a_bordo(14000.0, despacho.LOTACAO, destino=3)
+    assert despacho.custo(cheia, origem=3, destino=0) is None
+
+
 def test_todas_lotadas_a_chamada_espera_na_fila():
     estados = {n: cabine_com_a_bordo(9000.0, despacho.LOTACAO) for n in (1, 2, 3)}
     assert despacho.escolhe(estados, origem=2, destino=0) == (None, {})

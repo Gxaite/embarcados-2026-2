@@ -83,7 +83,9 @@ def _simula(posicao_mm, sentido, chamadas, manuais, posicoes, velocidade_mm_s):
 
 def _lotacao_maxima(instantes):
     """Maior numero de passageiros a bordo ao mesmo tempo no itinerario
-    simulado. No mesmo instante quem desce sai antes de quem embarca."""
+    simulado. Na mesma parada quem embarca conta antes de quem desce: a ESP32
+    pode embarcar primeiro, e por um instante a cabine passa da lotacao (no
+    simulador isso deu sobrecarga com 8 a bordo)."""
     eventos = []
     for embarque, desembarque in instantes.values():
         if embarque is None:
@@ -92,7 +94,7 @@ def _lotacao_maxima(instantes):
         if desembarque is not None:
             eventos.append((desembarque, -1))
     a_bordo = maior = 0
-    for _, variacao in sorted(eventos):
+    for _, variacao in sorted(eventos, key=lambda e: (e[0], -e[1])):
         a_bordo += variacao
         maior = max(maior, a_bordo)
     return maior

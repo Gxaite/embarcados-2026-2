@@ -149,6 +149,13 @@ class Esp32Predio(Esp32Simulada):
     def _porta_abriu(self, numero, fisica, agora):
         andar = fisica.andar_mais_proximo()
         with self._trava_das_chamadas:
+            # Quem desce sai antes de quem embarca.
+            for chamada in self.chamadas.values():
+                if chamada.cabine == numero and chamada.embarque is not None \
+                        and chamada.desembarque is None and chamada.destino == andar \
+                        and chamada.embarque < agora:
+                    chamada.desembarque = agora
+                    fisica.passageiros = max(0, fisica.passageiros - 1)
             for chamada in self.chamadas.values():
                 if chamada.cabine != numero:
                     continue
