@@ -24,7 +24,7 @@ from ..distribuido.itinerario import escolhe_parada, sentido_da_viagem
 # de arranque e aproximacao; uma parada custa o ciclo da porta.
 VELOCIDADE_POR_DUTY_MM_S = 10.0   # padrao, ate o central medir a da cabine
 TEMPO_DE_ARRANQUE_S = 6.5
-TEMPO_DE_PARADA_S = 6.0          # abrir 1,5 + aberta 2 + fechar 1,5 + folga
+TEMPO_DE_PARADA_S = 5.5          # abrir 1,5 + aberta 1,5 + fechar 1,5 + folga
 # Pesos menores (eram 0,5 e 0,25) favorecem a cabine que ja cobre a rota.
 PESO_DO_ATRASO_DOS_OUTROS = 0.40
 PESO_DA_VIAGEM = 0.20
@@ -37,9 +37,8 @@ FOLGA_DA_ESPERA_S = 15.0
 PENALIDADE_S = 1000.0
 # A ESP32 acusa sobrecarga (bit 0x0010 de `falha`) com 8 passageiros a bordo:
 # na rasp52 ela ligou nas tres cabines no terreo, quando o agrupamento do
-# up-peak embarcou 8 de uma vez. As chamadas atribuidas e nao concluidas de uma
-# cabine sao o pior caso de lotacao: no up-peak todos embarcam no terreo, no
-# down-peak ninguem desce antes dele.
+# up-peak embarcou 8 de uma vez. A lotacao e conferida no itinerario simulado,
+# instante a instante; a cabine que passaria dela nao recebe a chamada.
 LOTACAO = 7
 
 
@@ -81,6 +80,23 @@ def _simula(posicao_mm, sentido, chamadas, manuais, posicoes, velocidade_mm_s):
     return instantes
 
 
+def _lotacao_maxima(instantes):
+    """Maior numero de passageiros a bordo ao mesmo tempo no itinerario
+    simulado. No mesmo instante quem desce sai antes de quem embarca."""
+    eventos = []
+    for embarque, desembarque in instantes.values():
+        if embarque is None:
+            continue
+        eventos.append((embarque, 1))
+        if desembarque is not None:
+            eventos.append((desembarque, -1))
+    a_bordo = maior = 0
+    for _, variacao in sorted(eventos):
+        a_bordo += variacao
+        maior = max(maior, a_bordo)
+    return maior
+
+
 def velocidade_de_cruzeiro(estado):
     por_duty = estado.get("velocidade_por_duty") or VELOCIDADE_POR_DUTY_MM_S
     duty = estado.get("duty_maximo") or 16.7
@@ -88,7 +104,8 @@ def velocidade_de_cruzeiro(estado):
 
 
 def custo(estado, origem, destino):
-    """Segundos estimados para atender a chamada nesta cabine.
+    """Segundos estimados para atender a chamada nesta cabine, ou None se ela
+    passaria da lotacao.
 
     estado["chamadas_do_central"] sao as chamadas ja atribuidas a ela e nao
     concluidas ({origem, destino, embarcada, idade_s}); estado["paradas"], as
@@ -127,6 +144,8 @@ def custo(estado, origem, destino):
     embarque, desembarque = depois[len(chamadas)]
     if embarque is None:
         return PENALIDADE_S * 10
+    if _lotacao_maxima(depois) > LOTACAO:
+        return None
     espera = embarque + porta
     viagem = (desembarque if desembarque is not None else embarque) - embarque
     # O atraso imposto a cada chamada ja atribuida, no proximo evento dela:
@@ -144,8 +163,6 @@ def custo(estado, origem, destino):
     estouro = max(previstas) - limite
     if estouro > 0:
         total += PENALIDADE_S + estouro
-    if (estado.get("comprometidos") or 0) >= LOTACAO:
-        total += PENALIDADE_S
     return total
 
 
@@ -154,12 +171,17 @@ def disponivel(estado):
 
 
 def escolhe(estados, origem, destino):
-    """Numero da cabine escolhida, ou None se nenhuma pode atender.
+    """Numero da cabine escolhida, ou None se nenhuma pode atender (todas fora
+    de operacao ou lotadas: a chamada espera na fila do simulador).
 
     estados: {cabine: ultimo relatorio de estado, ou None se desconectada}.
     """
-    candidatas = {n: custo(e, origem, destino)
-                  for n, e in estados.items() if disponivel(e)}
+    candidatas = {}
+    for numero, estado in estados.items():
+        if disponivel(estado):
+            valor = custo(estado, origem, destino)
+            if valor is not None:
+                candidatas[numero] = valor
     if not candidatas:
         return None, {}
     return min(candidatas, key=lambda n: (candidatas[n], n)), candidatas

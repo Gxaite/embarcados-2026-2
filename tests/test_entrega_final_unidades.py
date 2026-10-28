@@ -342,14 +342,34 @@ def test_despacho_estima_a_volta_para_quem_vai_ao_contrario():
     assert perto > mesma_direcao
 
 
+def cabine_com_a_bordo(posicao, quantos, destino=0):
+    estado = estado_de_cabine(posicao)
+    estado["sentido"] = "descendo"
+    estado["chamadas_do_central"] = [
+        {"origem": 5, "destino": destino, "embarcada": True, "idade_s": 0.0}
+        for _ in range(quantos)]
+    return estado
+
+
 def test_despacho_respeita_a_lotacao():
     # Down-peak na rasp52: a mesma cabine recebia o andar inteiro e chegou ao
     # terreo com 11 passageiros (sobrecarga na ESP32).
-    cheia = estado_de_cabine(6000.0, paradas=(2, 0))
-    cheia["comprometidos"] = despacho.LOTACAO
+    cheia = cabine_com_a_bordo(6500.0, despacho.LOTACAO)
     livre = estado_de_cabine(15000.0)
     escolhida, custos = despacho.escolhe({1: cheia, 2: livre}, origem=2, destino=0)
-    assert escolhida == 2 and custos[1] > despacho.PENALIDADE_S
+    assert escolhida == 2 and 1 not in custos
+
+
+def test_lotacao_conta_quem_desce_no_caminho():
+    # 7 a bordo descendo ao 3: quem embarca no 1 entra depois que eles saem.
+    cheia = cabine_com_a_bordo(14000.0, despacho.LOTACAO, destino=3)
+    assert despacho.custo(cheia, origem=1, destino=0) is not None
+    assert despacho.custo(cheia, origem=4, destino=0) is None
+
+
+def test_todas_lotadas_a_chamada_espera_na_fila():
+    estados = {n: cabine_com_a_bordo(9000.0, despacho.LOTACAO) for n in (1, 2, 3)}
+    assert despacho.escolhe(estados, origem=2, destino=0) == (None, {})
 
 
 def test_despacho_segue_a_varredura_da_cabine_parada_no_andar():
