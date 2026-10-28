@@ -22,15 +22,14 @@ retirada da fila seja atendida.
 VELOCIDADE_POR_DUTY_MM_S = 10.0   # padrao, ate o central medir a da cabine
 TEMPO_DE_ARRANQUE_S = 6.5
 TEMPO_DE_PARADA_S = 7.0          # abrir 1,5 + aberta 3 + fechar 1,5 + folga
-# Redução dos pesos para favorecer atribuição a cabines que já cobrem a rota
-PESO_DO_ATRASO_DOS_OUTROS = 0.40  # Original: 0.5
-PESO_DA_VIAGEM = 0.20             # Original: 0.25
+# Pesos menores (eram 0,5 e 0,25) favorecem a cabine que ja cobre a rota.
+PESO_DO_ATRASO_DOS_OUTROS = 0.40
+PESO_DA_VIAGEM = 0.20
 VAO_MM = 3000.0
 # Invariante da Secao 7.5: ninguem espera mais de 90 s pelo embarque. A
 # estimativa tem erro, entao o limite usado aqui tem folga.
 ESPERA_MAXIMA_S = 90.0
-# Redução da folga para que chamadas antigas acionem a prioridade limite mais rápido
-FOLGA_DA_ESPERA_S = 15.0          # Original: 20.0
+FOLGA_DA_ESPERA_S = 15.0
 PENALIDADE_S = 1000.0
 
 

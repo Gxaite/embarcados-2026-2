@@ -78,8 +78,7 @@ class ServidorDistribuido:
                                pino=pinagem["CORTINA"], eco=self._log)
         self.sensor = SensorDeAndar(backend, pinagem["SENSOR_ANDAR"], self.encoder,
                                     self._ao_cruzar_bandeirola)
-        # Ajuste fino sintonizado na Entrega Final para Kd = 15.0
-        self.pid = PID(configuracao["kp"], configuracao["ki"], kd=15.0)
+        self.pid = PID(configuracao["kp"], configuracao["ki"], configuracao["kd"])
         self.malha = MalhaDePosicao(self.motor, self.encoder, self.pid, eco=self._log,
                                     ao_registrar=registro_pid, relogio=relogio)
         self.cota = CotaDePotencia(relogio=relogio)
@@ -209,25 +208,20 @@ class ServidorDistribuido:
             self._log("MODO DEGRADADO: sem Cota valida; velocidade minima e "
                       "pouso no proximo andar")
             self.modo = DEGRADADO
-        
         posicao = self.malha.posicao_mm
-        
-            # A malha perde cota válida no meio do rastreamento de um andar distante
         if self.malha.fase == malha_mod.RASTREANDO and self._pouso is None:
             sentido = self.malha.sentido or (1 if self.malha.alvo_mm > posicao else -1)
-            # Identifica o próximo andar no sentido do movimento para o pouso
+            # Rapida, a cabine ainda anda um trecho ate cair a velocidade
+            # minima: o andar de pouso tem de estar alem dele.
             folga = FOLGA_DO_POUSO_MM + 0.4 * abs(self.malha.velocidade_mm_s)
             self._pouso = self.mapa.proximo_andar_no_sentido(posicao, sentido, folga)
-            
             posicao_pouso = self.mapa.posicao[self._pouso]
             self._log("pouso de emergencia no andar %d" % self._pouso)
-            
-            # Redireciona a malha (a cota saturará automaticamente em 1000 mA)
+            # O teto de 1000 mA ja esta na malha; so o destino muda.
             if self.malha.alvo_mm != posicao_pouso:
                 self.malha.vai_para(posicao_pouso)
             self.andar_alvo = self._pouso
             return
-            
         if self.malha.ocupada:
             return
         if self.malha.fase == malha_mod.CHEGOU:
@@ -329,23 +323,20 @@ class ServidorDistribuido:
             if self.calibracao.ativa:
                 self.calibracao.ao_cruzar(borda)
                 return
-            
-            # Operação normal: reancora com base na borda atual e no mapa calibrado
+            # Operacao: corrige a contagem para o valor calibrado da borda.
             if self.mapa is not None and borda.lado is not None:
                 resultado = self.mapa.borda_cruzada(
                     borda.contagem, borda.lado, distancia_maxima_mm=CORRECAO_MAXIMA_MM
                 )
-                
                 if resultado is not None:
                     andar, contagem_calibrada = resultado
                     delta_mm = contagem_calibrada - borda.contagem
-                    
+
                     if abs(delta_mm) >= 1.0:
                         self.encoder.desloca(delta_mm)
                         self.malha.reancorou(delta_mm)
                         self.reancoragens += 1
                         self.ultima_correcao_mm = delta_mm
-                        
                         if abs(delta_mm) >= 3.0:
                             self._log("reancorado na borda %s do andar %d: %+.0f mm"
                                       % (borda.lado, andar, delta_mm))
