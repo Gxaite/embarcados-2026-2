@@ -23,9 +23,10 @@ case "$comando" in
     simulado)
         exec python3 -m src.simulacao "$@" ;;
     graficos)
-        pasta=${1:?"uso: ./elevador graficos <pasta com pid_cabineN.csv e potencia.csv>"}
+        pasta=${1:?"uso: ./elevador graficos <pasta com pid_cabineN.csv e potencia.csv> [--janela INICIO FIM]"}
+        shift
         exec python3 -m ferramentas.graficos --pid "$pasta"/pid_cabine*.csv \
-            --potencia "$pasta/potencia.csv" ;;
+            --potencia "$pasta/potencia.csv" "$@" ;;
     *)
         sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

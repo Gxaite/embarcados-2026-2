@@ -157,6 +157,8 @@ def main(argv=None):
     parser.add_argument("--pid", nargs="+", metavar="CSV",
                         help="CSVs de --registra-pid (ex.: gravados na placa)")
     parser.add_argument("--potencia", metavar="CSV", help="CSV de --registra-potencia")
+    parser.add_argument("--janela", nargs=2, type=float, metavar=("INICIO", "FIM"),
+                        help="trecho do CSV de potencia, em segundos")
     parser.add_argument("--saida", default=IMAGENS)
     args = parser.parse_args(argv)
     os.makedirs(args.saida, exist_ok=True)
@@ -167,7 +169,8 @@ def main(argv=None):
                                   "Viagens gravadas na placa"))
     if args.potencia:
         feitos.append(grafico_potencia(args.potencia,
-                                       os.path.join(args.saida, "potencia_placa.png")))
+                                       os.path.join(args.saida, "potencia_placa.png"),
+                                       janela_s=tuple(args.janela) if args.janela else None))
     if not args.pid and not args.potencia:
         pid = [("Kd = %s" % kd, os.path.join(EXPERIMENTOS, "pid_kd%s.csv" % kd))
                for kd in ("40", "15", "5")]

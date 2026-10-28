@@ -255,7 +255,29 @@ Viagens, cada cabine ao andar 5 e depois ao 4:
 | 2 | 39,5 s, +8,0 mm | 12,8 s, 0,0 mm |
 | 3 | 28,3 s, −1,5 mm | 11,5 s, +0,5 mm |
 
+Última viagem de cada cabine (`./elevador graficos`): rampa até o teto da
+Cota, cruzeiro, e a aproximação em que o duty oscila de −10 a +30% até a
+cabine assentar no alvo.
+
+![Viagens na placa](docs/imagens/pid_placa.png)
+
+Barramento de 11940 mA repartido em três Cotas de cerca de 3980 mA, que caem
+para 1000 mA na cabine ociosa e sobem para 5460 ou 6000 mA nas que viajam. A
+soma das Cotas fica no barramento e a corrente de cada cabine abaixo da sua
+Cota; parada, a ESP32 marca 300 mA.
+
+![Barramento na placa](docs/imagens/potencia_placa.png)
+
 O que a placa mostrou e o simulador não:
+
+- a corrente não é proporcional ao duty: são 300 mA com a cabine parada mais
+  cerca de 54 mA por ponto de duty (1212 mA a 17%, 2300 mA a 37%, 3000 mA a
+  56%). O simulador passou a usar esse modelo;
+- no gráfico acima as cabines 2 e 3 cruzam a 37% com Cota de 3980 mA, quando
+  a corrente medida permitia uns 50%. O fator de corrente (corrente medida
+  sobre a da fórmula) tinha subido a 1,95: a leitura de corrente chega até
+  0,5 s atrasada pelo central e era dividida pelo duty do instante, já menor
+  numa desaceleração. O divisor agora é o maior duty do último segundo;
 
 - na primeira rodada a ESP32 ligou a falha `0x0004` nas três cabines uns 90 mm
   abaixo do térreo, no começo da calibração, e passou a ignorar o motor
