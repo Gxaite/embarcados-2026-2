@@ -250,11 +250,13 @@ class ServidorCentral:
             if chamada.embarque is None:
                 idade = agora_de_parede - chamada.registro
                 esperando[chamada.origem] = max(idade, esperando.get(chamada.origem, 0))
-        # Ociosa, a cabine tem so a Cota minima; com a chamada ela passa a ter
-        # viagem e ganha no minimo a fatia de um terco do barramento.
+        # A viagem e estimada na fatia de um terco do barramento, a Cota que a
+        # cabine tem com as tres ocupadas, e com o fator de corrente dela. Com
+        # a Cota de agora, alta enquanto as outras estao ociosas, a espera
+        # saia otimista e passava dos 90 s quando elas arrancavam.
         capacidade = self.capacidade_ma() or CAPACIDADE_DESCONHECIDA_MA
-        duty_previsto = max(estado.get("duty_maximo") or 0.0,
-                            duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines))))
+        duty_previsto = duty_maximo_de(min(COTA_MAXIMA_MA, capacidade / len(self.cabines)),
+                                       estado.get("fator_de_corrente") or 1.0)
         return dict(estado, paradas=sorted(paradas), esperando=esperando,
                     velocidade_por_duty=cabine.velocidade_por_duty,
                     duty_maximo=duty_previsto)
