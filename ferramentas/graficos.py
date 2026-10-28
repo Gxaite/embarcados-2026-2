@@ -56,7 +56,9 @@ def grafico_pid(arquivos, saida, titulo):
         t = [v - t0 for v in dados["t_s"][inicio:fim]]
         eixo_pos.plot(t, dados["posicao_mm"][inicio:fim], color=cor, label=rotulo)
         eixo_duty.plot(t, dados["duty"][inicio:fim], color=cor, label=rotulo)
-    eixo_pos.axhline(dados["alvo_mm"][inicio], color="gray", ls="--", lw=1, label="alvo")
+        # Na placa cada cabine vai a um andar: o alvo de cada uma, na cor dela.
+        eixo_pos.axhline(dados["alvo_mm"][inicio], color=cor, ls="--", lw=1, alpha=0.6)
+    eixo_pos.plot([], [], color="gray", ls="--", lw=1, label="alvo")
     eixo_pos.set_ylabel("posicao (mm)")
     eixo_pos.set_title(titulo)
     eixo_pos.legend(loc="lower right")

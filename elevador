@@ -1,0 +1,31 @@
+#!/bin/sh
+# Comandos da Entrega Final.
+#
+#   ./elevador placa              central e tres cabines, uma janela do tmux cada, gravando os CSVs
+#   ./elevador para               Ctrl+C em cada processo (estado salvo, motores em freio) e fecha o tmux
+#   ./elevador teste [opcoes]     teste de aceitacao na placa; --simulado roda sem placa
+#   ./elevador simulado [opcoes]  sistema completo contra o predio simulado, sem placa
+#   ./elevador graficos <pasta>   graficos dos CSVs de uma pasta copiada da placa (no PC)
+set -e
+cd "$(dirname "$0")"
+comando=${1:-ajuda}
+[ $# -gt 0 ] && shift
+
+case "$comando" in
+    placa)
+        exec ferramentas/sobe_tudo.sh --registra "$@" ;;
+    para)
+        pkill -INT -f 'src\.(central|distribuido)' || true
+        sleep 3
+        tmux kill-session -t elevador 2>/dev/null || true ;;
+    teste)
+        exec python3 -m ferramentas.teste_placa "$@" ;;
+    simulado)
+        exec python3 -m src.simulacao "$@" ;;
+    graficos)
+        pasta=${1:?"uso: ./elevador graficos <pasta com pid_cabineN.csv e potencia.csv>"}
+        exec python3 -m ferramentas.graficos --pid "$pasta"/pid_cabine*.csv \
+            --potencia "$pasta/potencia.csv" ;;
+    *)
+        sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

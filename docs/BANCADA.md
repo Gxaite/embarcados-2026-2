@@ -188,13 +188,13 @@ imprime o relatório, salvo com logs e CSVs em `dados/teste_<data>_<hora>/`:
 
 ```bash
 git pull
-python3 -m ferramentas.teste_placa             # ~25 min; --pula despacho reinicio encurta
+./elevador teste                       # ~25 min; --pula despacho reinicio encurta
 ```
 
 Para operar à mão, com o painel do central:
 
 ```bash
-ferramentas/sobe_tudo.sh --registra
+./elevador placa
 ```
 
 Roteiro de verificação, na ordem:
@@ -218,12 +218,13 @@ Roteiro de verificação, na ordem:
 7. **Despacho**: um Cenário de Tráfego pelo dashboard; acompanhar no painel a
    maior espera em curso (tem de ficar abaixo de 90 s) e os tempos médios.
 
-Os CSVs ficam em `dados/`. Os gráficos são gerados fora da placa, que não tem
+Os CSVs ficam em `dados/` (`./elevador placa`) ou em `dados/teste_<data>_<hora>/`
+(`./elevador teste`). Os gráficos são gerados fora da placa, que não tem
 matplotlib:
 
 ```bash
-scp -P <porta> <usuario>@<placa>:embarcados-2026-2/dados/*.csv dados/
-python3 -m ferramentas.graficos --pid dados/pid_cabine1.csv --potencia dados/potencia.csv
+mkdir -p placa && scp -P <porta> <usuario>@<placa>:'embarcados-2026-2/dados/*.csv' placa/
+./elevador graficos placa              # docs/imagens/pid_placa.png e potencia_placa.png
 ```
 
 | Sintoma | Causa provável |

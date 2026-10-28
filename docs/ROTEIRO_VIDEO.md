@@ -24,7 +24,7 @@ bloco mostra um item funcionando e o código que o implementa.
 | Tempo | Item (peso) | Na tela | Código |
 |:-:|:--|:--|:--|
 | 0:00 | Apresentação | os dois na câmera; diagrama de arquitetura do README | — |
-| 0:30 | TCP (1,0) | `ferramentas/sobe_tudo.sh --registra`; central sobe antes das cabines e espera por elas; painel com as três `ok` | `src/rede/cliente.py` (`ClienteReconectavel`), `src/rede/protocolo.py` |
+| 0:30 | TCP (1,0) | `./elevador placa`; central sobe antes das cabines e espera por elas; painel com as três `ok` | `src/rede/cliente.py` (`ClienteReconectavel`), `src/rede/protocolo.py` |
 | 1:30 | Calibração (0,5) | log de uma cabine: bandeirolas da subida e da descida, tabela final, nivelamento; widget mostrando a cabine nivelada | `src/distribuido/bandeirola.py` (bordas por interrupção), `calibracao.py`, reancoragem em `cabine.py` (`_ao_cruzar_bandeirola`) |
 | 3:00 | PID (1,5) | `vai 1 3` no painel: `CHEGADA ... erro` abaixo de 10 mm, porta abre e fecha; gráfico de sintonia do README | `src/distribuido/pid.py` (`calcula`), `malha.py` (rampa, atrito estático), `src/gpio/encoder.py` |
 | 4:30 | Cortina | "Obstruir porta" no dashboard durante o fechamento; log com o fechamento inibido e reiniciado | `src/distribuido/porta.py` (`ao_mudar_cortina`) |

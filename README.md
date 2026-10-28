@@ -8,7 +8,7 @@ edifício da ESP32 da bancada.
 |:--|:--|:-:|:--|
 | 1 | GPIO e malha de posição da Cabine 1 | `v1.0` | `python3 -m src.main` |
 | 2 | UART-MODBUS (Partes 1, 2 e 3) e I2C | `v2.0` | `python3 -m src.comunicacao --matricula <matricula>` |
-| Final | Servidor Central e três Servidores Distribuídos | `v3.0` | `ferramentas/sobe_tudo.sh` |
+| Final | Servidor Central e três Servidores Distribuídos | `v3.0` | `./elevador placa` |
 
 ## Integrantes
 
@@ -50,22 +50,32 @@ trocar o `host` de cada cabine no `central.json`.
 
 ### Execução
 
-Os quatro processos sobem **em qualquer ordem**, cada um no seu terminal. O
-script abaixo abre uma sessão `tmux` com uma janela para cada (Ctrl+b e o
-número troca de janela):
+Todos os comandos passam pelo script `./elevador` (sem argumento, ele lista os
+comandos):
 
-```bash
-ferramentas/sobe_tudo.sh               # ou, para gravar os CSVs dos gráficos:
-ferramentas/sobe_tudo.sh --registra    # dados/pid_cabineN.csv e dados/potencia.csv
-```
+| Comando | Função |
+|:--|:--|
+| `./elevador placa` | central e três cabines, uma janela do `tmux` cada, gravando `dados/pid_cabineN.csv` e `dados/potencia.csv` |
+| `./elevador para` | Ctrl+C em cada processo (estado salvo, motores em freio) e fecha a sessão |
+| `./elevador teste` | teste de aceitação na placa (seção [Testes](#testes)) |
+| `./elevador simulado` | sistema completo sem placa (abaixo) |
+| `./elevador graficos <pasta>` | gráficos dos CSVs copiados da placa ([Experimentos](#experimentos)) |
 
-Ou à mão:
+Antes de subir, confira no dashboard que nenhuma cabine está com falha
+(registrador `falha` diferente de zero, borda vermelha na cabine): com falha
+ativa a ESP32 ignora o motor e a calibração trava. O reset do dashboard limpa.
+
+Na sessão do `./elevador placa`, `Ctrl+b` e o número troca de janela: 0 é o
+painel do central, 1 a 3 são as cabines. Ctrl+C numa janela derruba só aquele
+processo; `Ctrl+b c` abre uma janela nova para subi-lo de novo.
+
+Os quatro processos sobem **em qualquer ordem**. À mão, um terminal para cada:
 
 ```bash
 python3 -m src.central                 # painel em tela cheia; --sem-tela para texto
-python3 -m src.distribuido --cabine 1
-python3 -m src.distribuido --cabine 2
-python3 -m src.distribuido --cabine 3
+python3 -m src.distribuido --cabine 1  # uma de cada vez: subindo juntas no mesmo
+python3 -m src.distribuido --cabine 2  # diretório, a lgpio disputa o pipe .lgd-nfy0
+python3 -m src.distribuido --cabine 3  # e a cabine que perde morre no import
 ```
 
 Ao conectar, cada cabine calibra sozinha (varredura de subida e de descida) e
@@ -91,7 +101,7 @@ I2C e TCP. Subindo de novo, os outros reconectam sozinhos e o central reenvia
 ### Sem a placa: modo simulado
 
 ```bash
-python3 -m src.simulacao
+./elevador simulado                    # o mesmo que python3 -m src.simulacao
 ```
 
 Sobe num processo só o prédio simulado (`src/simulacao/`), as três cabines e o
@@ -183,13 +193,19 @@ evento.
   próximo andar no sentido do movimento, nivelamento, porta aberta até voltar
   a Cota.
 
-**Despacho por Destino** (`src/central/despacho.py`)
+**Despacho por Destino** (`src/central/despacho.py`, `src/distribuido/itinerario.py`)
 
 - Cada chamada vai para a cabine de menor custo estimado: tempo até a porta
   abrir na origem, percorrendo o itinerário da cabine na ordem em que ela o
   executa (SCAN), mais o atraso imposto aos passageiros já atribuídos e uma
   fração da viagem do passageiro novo. Origem que já é parada da cabine não
   custa parada nova: é o agrupamento de passageiros.
+- Limite de 90 s: a viagem é estimada na velocidade da fatia de um terço do
+  barramento (a Cota que a cabine tem com as três ocupadas, corrigida pelo
+  fator de corrente medido), e a chamada que levaria alguém além de 75 s de
+  espera é penalizada. Na cabine, uma origem esperando há mais de 50 s passa
+  na frente da varredura. Parada num andar, a cabine informa o sentido da
+  varredura, e a parada no andar em que ela está entra primeiro na estimativa.
 - Só entram cabines calibradas e operando. Sem nenhuma, a chamada fica na fila
   do simulador: toda chamada retirada é atribuída e atendida.
 - Fluxo da Seção 5.3: lê a fila, atribui (offsets 9 e 10 numa escrita só),
@@ -211,14 +227,65 @@ tratados nos quatro processos.
 
 ## Experimentos
 
+### Na placa (rasp52, 28/10/2026)
+
+`./elevador teste` na rasp52, que tem o BMP280 em `0x76`:
+
+| Item | Resultado |
+|:--|:--|
+| Comunicação TCP | cabines subiram antes do central; as três conectadas em 1 s |
+| Condição de Contorno | BMP280 a 24,5 °C, `watchdog_ambiente` = 0, `barramento_max_ma` = 12000 (a fórmula dá 12000) |
+| Calibração | 98 s para as três juntas; vãos de 2865 a 3090 mm, bandeirolas de 121 a 281 mm |
+| PID | 6 de 6 viagens niveladas pelo registrador `nivelado`, erro de chegada de −7,5 a +8,0 mm |
+| Malha de 50 ms | 4393 ciclos, atraso médio 0,09 ms e máximo 2,6 ms, nenhum perdido, sem SCHED_FIFO (usuário comum) |
+
+Posições de andar medidas, em mm:
+
+| Cabine | Andar 0 | 1 | 2 | 3 | 4 | 5 | Larguras das bandeirolas (0 a 5) |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:--|
+| 1 | 1 | 3001 | 6000 | 8946 | 11906 | 14862 | 192, 241, 141, 271, 171, 221 |
+| 2 | 60 | 3115 | 6040 | 9130 | 12055 | 15110 | 261, 151, 211, 121, 281, 181 |
+| 3 | 25 | 2890 | 5960 | 8876 | 11940 | 14896 | 162, 231, 252, 201, 131, 271 |
+
+Viagens, cada cabine ao andar 5 e depois ao 4:
+
+| Cabine | Ao andar 5 | Ao andar 4 |
+|:-:|:-:|:-:|
+| 1 | 31,8 s, +2,5 mm | 20,3 s, −7,5 mm |
+| 2 | 39,5 s, +8,0 mm | 12,8 s, 0,0 mm |
+| 3 | 28,3 s, −1,5 mm | 11,5 s, +0,5 mm |
+
+O que a placa mostrou e o simulador não:
+
+- na primeira rodada a ESP32 ligou a falha `0x0004` nas três cabines uns 90 mm
+  abaixo do térreo, no começo da calibração, e passou a ignorar o motor
+  (corrente sem movimento). Depois do reset do dashboard a mesma descida
+  funcionou; a causa não foi confirmada. A cabine agora registra no log cada
+  mudança do registrador `falha`;
+- sem o programa, com os pinos liberados, as cabines escorregam até o fundo do
+  poço;
+- a `lgpio` (por baixo da `RPi.GPIO`) cria o pipe `.lgd-nfy0` no diretório
+  corrente, e três cabines subindo juntas no mesmo diretório disputam o
+  arquivo. O `./elevador placa` e o teste dão um diretório a cada uma.
+
+Para gerar os gráficos a partir de uma rodada na placa (a placa não tem
+matplotlib): copiar a pasta para o PC e rodar `./elevador graficos`, que grava
+`docs/imagens/pid_placa.png` (última viagem de cada cabine: posição, alvo e
+duty) e `docs/imagens/potencia_placa.png` (barramento, Cotas e correntes):
+
+```bash
+scp -r -P <porta> <usuario>@<placa>:embarcados-2026-2/dados/teste_<data>_<hora> .
+./elevador graficos teste_<data>_<hora>
+```
+
+### No simulador
+
 Os gráficos abaixo saíram do prédio simulado (`src/simulacao/`), que reproduz
 atrito estático, inércia, quadratura, bandeirolas de largura variável e perda
 de bordas do encoder, mas não o motor da bancada. Os ganhos ficam no arquivo de
-configuração para serem reajustados na placa; os mesmos gráficos saem dos CSVs
-gravados nela com `ferramentas/sobe_tudo.sh --registra` e
-`python3 -m ferramentas.graficos --pid dados/pid_cabine1.csv --potencia dados/potencia.csv`.
+configuração para serem reajustados na placa.
 
-### Sintonia do PID
+#### Sintonia do PID
 
 Partimos dos valores sugeridos (Kp = 0,5, Ki = 0,05, Kd = 40) e variamos o Kd,
 numa viagem de 3 andares com Cota de 4000 mA (`python3 -m ferramentas.experimentos pid`):
@@ -238,7 +305,7 @@ toda a viagem.
 
 ![Chegada](docs/imagens/pid_chegada.png)
 
-### Saturação pela Cota
+#### Saturação pela Cota
 
 Viagem do andar 0 ao 5 com a Cota caindo de 6000 para 3000 mA e depois para
 1000 mA (`python3 -m ferramentas.experimentos cota`). O duty acompanha o teto
@@ -246,7 +313,7 @@ no mesmo ciclo e nunca o ultrapassa:
 
 ![Saturação pela Cota](docs/imagens/pid_cota.png)
 
-### Cenários de Tráfego
+#### Cenários de Tráfego
 
 Sistema completo, três cenários de 5 minutos, com semente fixa e uma chamada a
 cada 5 s em média (`python3 -m ferramentas.experimentos cenarios`):
@@ -282,7 +349,8 @@ src/
 ├── main.py        ponto de entrada da Entrega 1
 └── comunicacao.py ponto de entrada da Entrega 2
 config/            um arquivo por cabine e um do central
-ferramentas/       sobe_tudo.sh, experimentos, gráficos, bring-up da Entrega 1
+elevador           comandos da Entrega Final (placa, para, teste, simulado, graficos)
+ferramentas/       sobe_tudo.sh, teste_placa, experimentos, gráficos, bring-up da Entrega 1
 ```
 
 ## Testes
@@ -292,15 +360,18 @@ python3 -m pytest tests/ -q -m "not lento"   # unidades, segundos
 python3 -m pytest tests/ -q                  # inclui o sistema completo no simulador (minutos)
 ```
 
-Teste de aceitação de ponta a ponta, na placa (dentro do `tmux`) ou no
-simulador: sobe os quatro processos, percorre o roteiro da seção 10 do
-[guia da bancada](docs/BANCADA.md), vigia os invariantes da Seção 7.5 pelos
-registradores MODBUS e grava logs, CSVs dos gráficos e relatório em
-`dados/teste_<data>_<hora>/`:
+Teste de aceitação de ponta a ponta, na placa ou no simulador: sobe os quatro
+processos, percorre o roteiro da seção 10 do [guia da bancada](docs/BANCADA.md)
+(conexão, Condição de Contorno, calibração, viagens, cortina, Modo Degradado,
+queda de TCP e reinício do central, despacho com cenário, SIGINT numa cabine),
+vigia os invariantes da Seção 7.5 pelos registradores MODBUS e grava logs, CSVs
+dos gráficos e relatório em `dados/teste_<data>_<hora>/`. A cortina e o
+despacho pedem, na hora, o botão do dashboard.
 
 ```bash
-python3 -m ferramentas.teste_placa             # na Raspberry Pi
-python3 -m ferramentas.teste_placa --simulado  # sem placa
+./elevador teste                       # na Raspberry Pi, uns 25 min
+./elevador teste --pula cortina reinicio   # etapas a pular
+./elevador teste --simulado            # sem placa
 ```
 
 ## Entregas anteriores
