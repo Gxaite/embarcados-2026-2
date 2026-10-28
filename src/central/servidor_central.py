@@ -36,6 +36,10 @@ ESTADO_VELHO_S = 2.0
 LEITURA_FRESCA_S = 0.15
 EVENTOS_NA_TELA = 200
 CENARIO_UP_PEAK = 1                 # registrador cenario_ativo (Secao 5.3)
+# Parte do barramento que nao vira Cota: com ele inteiro repartido, os picos de
+# partida de duas cabines juntas passaram da capacidade e a ESP32 acusou
+# "barramento em sobrecarga" nas tres (rasp52, 28/10/2026).
+RESERVA_DO_BARRAMENTO = 0.05
 
 
 class Cabine:
@@ -334,8 +338,11 @@ class ServidorCentral:
             ocupada = estado.get("modo") == "calibrando" or estado.get("paradas") \
                 or estado.get("fase") in ("rastreando", "assentando", "pulso", "constante")
             (ativas if ocupada else ociosas).append(numero)
+        capacidade = self.capacidade_ma()
+        if capacidade is not None:
+            capacidade = int(capacidade * (1.0 - RESERVA_DO_BARRAMENTO))
         for numero, (cota, sequencia) in self.cotas.reparte(
-                self.capacidade_ma(), ativas, ociosas, sem_cota).items():
+                capacidade, ativas, ociosas, sem_cota).items():
             enviada = self.cabines[numero].cliente.envia(
                 {"tipo": p.COTA, "cota_ma": cota, "validade_s": 2.0, "seq": sequencia})
             if not enviada:

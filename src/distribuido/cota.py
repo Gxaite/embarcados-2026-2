@@ -36,7 +36,9 @@ CORRENTE_POR_DUTY_INICIAL_MA = 66.0
 CORRENTE_POR_DUTY_MINIMA_MA = 30.0
 CORRENTE_POR_DUTY_MAXIMA_MA = 150.0
 QUEDA_POR_MEDICAO_MA = 0.05
-FOLGA_DA_COTA = 1.05
+# Margem para o pico da partida sobre a corrente de cruzeiro (1,13 vez na
+# rasp52); com 5% os picos somados estouraram o barramento.
+FOLGA_DA_COTA = 1.10
 DUTY_MINIMO_PARA_MEDIR = 12.0
 
 

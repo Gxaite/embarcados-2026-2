@@ -47,7 +47,7 @@ DUTY_DE_ARRANQUE = 12.0         # 10% do enunciado com folga
 # a ~60% com o teto pela corrente medida, a deriva levou a porta fora do nivel.
 # Ate 56% a placa chegou com +-3 mm em todas as viagens de 28/10/2026.
 DUTY_MAXIMO_DO_ENCODER = 55.0
-RAMPA_POR_S = 150.0             # pontos de duty por segundo na aceleracao
+RAMPA_POR_S = 100.0             # pontos de duty por segundo na aceleracao
 ERRO_PARA_ARRANQUE_MM = 30.0    # abaixo disto, parado, corrige por pulsos
 
 TEMPO_DE_ASSENTAMENTO_S = 0.30

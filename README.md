@@ -156,7 +156,7 @@ evento.
   medida (troca de destino no meio da viagem não dá chute), anti-windup por
   integração condicional e separação do integral (só acumula a menos de 50 mm
   do destino). A saída vira duty de 0 a 100% e direção (`DIR1`/`DIR2`).
-- Rampa de aceleração de 150 %/s na subida do duty; reduzir é imediato.
+- Rampa de aceleração de 100 %/s na subida do duty; reduzir é imediato.
 - Cruzeiro limitado a 55% de duty: acima disso o Python perde bordas do
   encoder (19 mm em 3000 mm a 60% na rasp34), e a contagem que escorrega leva
   a porta fora do nível.
@@ -192,8 +192,9 @@ evento.
   instante em que a Cota chega e um ciclo antes de ela vencer. Abaixo disso,
   pelo modelo de corrente que ela mede na ESP32 (repouso de ~300 mA mais
   ~54 mA por ponto de duty), o teto é o maior duty cuja corrente prevista cabe
-  na Cota com 5% de folga.
-- O central reparte `barramento_max_ma`: 1000 mA para cada cabine, o resto
+  na Cota com 10% de folga, para o pico da partida.
+- O central reparte 95% de `barramento_max_ma` (o resto é reserva para os
+  picos de partida): 1000 mA para cada cabine, o resto
   para as que têm viagem, até 6000 mA cada. Uma Cota enviada conta como em uso
   até a cabine confirmar uma posterior (número de sequência no relatório) ou
   vencer: assim uma redução sempre chega antes do aumento que ela libera, e a
