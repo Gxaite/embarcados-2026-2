@@ -179,7 +179,7 @@ não mostra nada, está no envio.
 | `Remote I/O error` no BMP280 | sensor ausente no endereço `0x76`; conferir `i2cdetect` |
 | `watchdog_ambiente` volta a 1 | escrita automática desligada; `auto on` ou `--contorno-auto` |
 
-## 8. Entrega Final
+## 10. Entrega Final
 
 Os quatro processos rodam na mesma placa, dentro do `tmux` (seção 1):
 
