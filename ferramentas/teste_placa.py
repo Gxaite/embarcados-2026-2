@@ -435,11 +435,14 @@ class Teste:
     def resumo_da_cabine(self, numero):
         estado = self.estado(numero) or {}
         registradores = self.registradores(numero)
-        return ("C%d: modo %s, calibracao %s, fase %s, posicao %s mm, andar MODBUS %s, "
-                "porta %s, falha %s" % (
+        falha_esp32 = registradores.get("falha")
+        return ("C%d: modo %s, calibracao %s, fase %s, posicao %s mm (MODBUS %s mm), "
+                "andar MODBUS %s, porta %s, falha da malha %s, falha ESP32 %s" % (
                     numero, estado.get("modo"), estado.get("calibracao"), estado.get("fase"),
-                    estado.get("posicao_mm"), registradores.get("andar_atual"),
-                    registradores.get("porta_estado"), estado.get("falha")))
+                    estado.get("posicao_mm"), registradores.get("posicao_mm"),
+                    registradores.get("andar_atual"), registradores.get("porta_estado"),
+                    estado.get("falha"),
+                    "-" if falha_esp32 is None else "0x%04X" % falha_esp32))
 
     # ------------------------------------------------------------ roteiro
     def roda(self):

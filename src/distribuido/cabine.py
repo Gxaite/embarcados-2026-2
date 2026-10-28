@@ -386,7 +386,13 @@ class ServidorDistribuido:
         if not dados:
             return
         with self._trava:
+            anterior = self.registradores.get("falha", 0)
             self.registradores = dict(dados)
+            if dados.get("falha", anterior) != anterior:
+                # A ESP32 pode bloquear o motor com falha ativa: sem isto no
+                # log, o travamento que vem em seguida nao tem explicacao.
+                self._log("ESP32: registrador falha 0x%04X -> 0x%04X (posicao MODBUS %s mm)"
+                          % (anterior, dados["falha"], dados.get("posicao_mm")))
             self.cota.mede_corrente(dados.get("corrente_ma"), self.malha.comando)
             if "porta_estado" in dados:
                 self.porta.registradores(dados["porta_estado"], self._relogio())
