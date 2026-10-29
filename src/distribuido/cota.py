@@ -12,9 +12,8 @@ A formula supoe 6000 mA a 100% de duty, proporcional. A ESP32 nao e assim:
 marca 300 mA com a cabine parada mais ~54 mA por ponto de duty (1212 mA a 17%
 na bancada em 22/10/2026; 2300 a 37% e 3000 a 56% na rasp52 em 28/10/2026).
 A cabine mede os dois numeros na corrente que o central repassa a cada
-500 ms e usa como teto o maior duty cuja corrente prevista cabe na Cota, com
-folga. A inclinacao e a pior vista e so desce devagar, e o teto nunca passa
-da formula do enunciado. Um fator unico sobre a formula, como antes, era
+500 ms e usa como teto o maior duty cuja corrente prevista, mais o ruido da
+leitura, cabe na Cota. O teto nunca passa da formula do enunciado. Um fator unico sobre a formula, como antes, era
 medido em duty baixo, onde os 300 mA pesam, e travava o cruzeiro em ~48% com
 Cota de 4000 mA: o barramento ficava 40% ocioso.
 
@@ -31,31 +30,36 @@ COTA_DO_MODO_DEGRADADO_MA = 1000.0
 VALIDADE_PADRAO_S = 2.0
 
 CORRENTE_PARADA_INICIAL_MA = 300.0
-# mA por ponto de duty: o percentil 90 das ultimas medidas com o duty estavel.
-# Na rasp52 a inclinacao em cruzeiro foi de 56 mA por ponto (p90 58), igual
-# subindo e descendo; o pior valor visto (70 a 81, em picos raros), guardado e
-# esquecido devagar, travava o cruzeiro em 42-49% de duty. Os picos ficam com
-# a folga da Cota e a reserva do barramento. Ate juntar medidas, 10% acima dos
-# 60 da formula.
+# mA por ponto de duty: a mediana das ultimas medidas com o duty estavel. Na
+# rasp52 ela foi de 56 mA por ponto, igual subindo e descendo e de 40 a 60% de
+# duty; o pior valor visto (70 a 86, em picos de ruido), guardado e esquecido
+# devagar, travava o cruzeiro em 36-47%. Ate juntar medidas, 10% acima dos 60
+# da formula.
 CORRENTE_POR_DUTY_INICIAL_MA = 66.0
 CORRENTE_POR_DUTY_MINIMA_MA = 30.0
 CORRENTE_POR_DUTY_MAXIMA_MA = 150.0
 MEDIDAS_GUARDADAS = 40
 MEDIDAS_PARA_CONFIAR = 10
-PERCENTIL_DA_INCLINACAO = 0.9
-# Margem para o pico da partida sobre a corrente de cruzeiro (1,13 vez na
-# rasp52); com 5% os picos somados estouraram o barramento.
-FOLGA_DA_COTA = 1.10
+PERCENTIL_DA_INCLINACAO = 0.5
+# Ruido da leitura de corrente da ESP32: com o duty parado no cruzeiro ela
+# passa da reta 300 + 56 x duty em ate ~520 mA (p99) e ~700 mA (max), o mesmo
+# de 40 a 60% de duty (rasp52, 29/10/2026, 2207 leituras). Com folga de 10%
+# (~330 mA a 54%) a corrente passou da Cota e as tres cabines juntas acenderam
+# "barramento em sobrecarga". Em Cota baixa a margem e uma fracao do que vai
+# ao motor, para o Modo Degradado (1000 mA) ainda vencer o arranque de 12%.
+RUIDO_DA_CORRENTE_MA = 700.0
+FRACAO_MAXIMA_DO_RUIDO = 0.20
 DUTY_MINIMO_PARA_MEDIR = 12.0
 
 
 def duty_maximo_de(cota_ma, corrente_parada_ma=None, corrente_por_duty_ma=None):
     """Teto de duty da Cota: a formula do enunciado, cota / 6000 x 100, e, com
-    o modelo medido, o duty cuja corrente prevista cabe na Cota com folga."""
+    o modelo medido, o duty cuja corrente prevista mais o ruido cabe na Cota."""
     teto = cota_ma / CORRENTE_DE_ACELERACAO_PLENA_MA * 100.0
     if corrente_por_duty_ma:
-        teto = min(teto, (cota_ma / FOLGA_DA_COTA - (corrente_parada_ma or 0.0))
-                   / corrente_por_duty_ma)
+        para_o_motor = cota_ma - (corrente_parada_ma or 0.0)
+        margem = min(RUIDO_DA_CORRENTE_MA, FRACAO_MAXIMA_DO_RUIDO * para_o_motor)
+        teto = min(teto, (para_o_motor - margem) / corrente_por_duty_ma)
     return max(0.0, min(100.0, teto))
 
 
