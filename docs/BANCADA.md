@@ -207,7 +207,7 @@ Roteiro de verificação, na ordem:
    expira e as cabines andam a 1000 mA.
 3. **Calibração**: cada cabine imprime as seis bandeirolas da subida e da
    descida e a tabela final; vãos de ~3000 mm e larguras diferentes entre si.
-   Depois ela nivela no andar mais próximo, e o widget a mostra nivelada.
+   Depois ela desce e nivela no térreo, e o widget a mostra nivelada.
 4. **Viagem**: `vai 1 3` no painel; a cabine deve chegar com `CHEGADA ... erro`
    abaixo de 10 mm, abrir e fechar a porta.
 5. **Cortina**: "Obstruir porta" no dashboard enquanto a porta fecha; o log da

@@ -79,7 +79,7 @@ python3 -m src.distribuido --cabine 3  # e a cabine que perde morre no import
 ```
 
 Ao conectar, cada cabine calibra sozinha (varredura de subida e de descida) e
-vai nivelar no andar mais próximo; a partir daí atende as chamadas feitas no
+desce para nivelar no térreo; a partir daí atende as chamadas feitas no
 quiosque do dashboard ou os Cenários de Tráfego.
 
 Comandos do painel do Servidor Central:
