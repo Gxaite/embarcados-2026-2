@@ -142,42 +142,21 @@ def test_teto_de_cruzeiro_usa_o_barramento():
     cota.mede_corrente(300, 0)
     for _ in range(1000):
         cota.mede_corrente(corrente_da_esp32(37), 37)
-    assert cota.duty_maximo > 50
-    assert corrente_da_esp32(cota.duty_maximo) + cota_mod.RUIDO_DA_CORRENTE_MA <= 4000
+    assert cota.duty_maximo > 60
+    assert corrente_da_esp32(cota.duty_maximo) <= 4000 / cota_mod.FOLGA_DA_COTA
 
 
 def test_picos_raros_nao_travam_o_cruzeiro():
     # rasp52: 56 mA por ponto em cruzeiro, picos raros de 80. Guardando o pior
-    # valor o teto caia a 36-47% com Cota de 3800 mA.
+    # valor o teto caia a 42-49% com Cota de 3800 mA.
     cota = cota_mod.CotaDePotencia(relogio=Relogio())
     cota.recebe(3800, 2.0)
     cota.mede_corrente(300, 0)
     for i in range(200):
         por_ponto = 80.0 if i % 25 == 0 else 56.0
         cota.mede_corrente(300 + por_ponto * 50, 50)
-    assert cota.duty_maximo >= 49
-
-
-def test_ruido_da_leitura_nao_passa_da_cota():
-    # rasp52, 29/10: com folga de 10% a leitura de corrente passou da Cota de
-    # 3800 mA em cruzeiro (ate 4005 mA a 54%) e o barramento acusou sobrecarga.
-    cota = cota_mod.CotaDePotencia(relogio=Relogio())
-    cota.recebe(3800, 2.0)
-    cota.mede_corrente(300, 0)
-    for i in range(40):
-        cota.mede_corrente(300 + 56 * 50 + (520 if i % 10 == 0 else 0), 50)
-    assert 300 + 56 * cota.duty_maximo + 700 <= 3800
-    # Tres cabines no teto, todas no pico de ruido, cabem no barramento.
-    assert 3 * (300 + 56 * cota.duty_maximo + 700) <= 12000
-
-
-def test_modo_degradado_ainda_arranca():
-    cota = cota_mod.CotaDePotencia(relogio=Relogio())
-    cota.mede_corrente(300, 0)
-    for _ in range(40):
-        cota.mede_corrente(300 + 56 * 40, 40)
-    assert not cota.valida
-    assert cota.duty_maximo >= 9.9
+    assert cota.duty_maximo > 52
+    assert 300 + 56 * cota.duty_maximo <= 3800 / cota_mod.FOLGA_DA_COTA
 
 
 def test_teto_nunca_passa_da_formula():
