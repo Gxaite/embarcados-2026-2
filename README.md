@@ -20,7 +20,7 @@ Listados no repositório de entrega.
 |:--|:--|
 | 1 | https://youtu.be/LKAWTPL8WLw |
 | 2 | https://youtu.be/ICxFs3GONZo |
-| Final | a ser adicionado |
+| Final | _(link do vídeo a adicionar)_ |
 
 ## Entrega Final
 
@@ -207,8 +207,9 @@ evento.
 **Despacho por Destino** (`src/central/despacho.py`, `src/distribuido/itinerario.py`)
 
 - Cada chamada vai para a cabine de menor custo estimado: tempo até a porta
-  abrir na origem, mais o atraso imposto aos passageiros já atribuídos e uma
-  fração da viagem do passageiro novo. O custo sai de uma simulação do
+  abrir na origem, mais o atraso imposto aos passageiros já atribuídos (no
+  embarque de quem espera e no desembarque de todos) e uma fração da viagem do
+  passageiro novo. O custo sai de uma simulação do
   itinerário da cabine com a mesma regra que ela executa (`escolhe_parada`):
   SCAN que só para no caminho para quem vai no sentido da varredura; quem vai
   ao contrário embarca na volta, e a origem contrária mais distante é o ponto
@@ -331,6 +332,58 @@ duty) e `docs/imagens/potencia_placa.png` (barramento, Cotas e correntes):
 scp -r -P <porta> <usuario>@<placa>:embarcados-2026-2/dados/teste_<data>_<hora> .
 ./elevador graficos teste_<data>_<hora>
 ```
+
+### Cenários de Tráfego na placa (rasp52, 29/10/2026)
+
+Os cenários disparados no widget, com `./elevador placa`. Espera e viagem
+saem de `dados/viagens.csv` (registro do central) e batem com as Métricas do
+Grupo do widget, a menos de décimos.
+
+| Versão | Cenário | Chamadas | Espera média | Espera máxima | Acima de 90 s | Viagem média |
+|:--|:--|:-:|:-:|:-:|:-:|:-:|
+| 28/10 (`685dfcd`) | Interfloor | 75 | 31,2 s | 99,7 s | 1 | 51,4 s |
+| 28/10 (`685dfcd`) | Up-peak | 75 | 49,5 s | 100,3 s | 8 | 44,9 s |
+| 28/10 (`685dfcd`) | Down-peak | 75 | 36,5 s | 91,1 s | 1 | 41,8 s |
+| entregue | Up-peak | 76 | 30,3 s | 77,7 s | 0 | 35,4 s |
+| entregue | Down-peak | 75 | 36,2 s | 86,7 s | 0 | 34,8 s |
+
+![Up-peak na placa](docs/imagens/upeak_placa.png)
+
+![Down-peak na placa](docs/imagens/downpeak_placa.png)
+
+Na primeira rodada as viagens levavam 15 s entre duas aberturas de porta em
+andares vizinhos (5,4 s de ciclo da porta da ESP32) e mais 6,7 s por andar a
+mais. No up-peak cada cabine saía do térreo com 7 passageiros e parava em todos
+os andares, e a volta passava de 120 s. Duas mudanças baixaram a espera:
+
+- o teto de duty: a cabine guardava o pior consumo visto (até 87 mA por ponto
+  de duty na cabine 1, num pico de ruído) e cruzava a 36%. Medido em 2207
+  leituras com o duty parado, o consumo é de 56 mA por ponto, igual subindo e
+  descendo e de 40 a 60% de duty. Com o percentil 90 das últimas 40 medidas, as
+  três cruzam a 50-55%;
+- o despacho passou a contar o atraso que um passageiro novo impõe também ao
+  desembarque de quem ainda vai embarcar. Antes, um destino novo não custava
+  nada a quem esperava no térreo, e o up-peak não agrupava quem vai ao mesmo
+  andar.
+
+Barramento durante o up-peak: soma das Cotas em 11400 mA (5% de reserva sobre
+os 12000), e a soma das correntes passa de 10000 mA quando as três viajam
+juntas.
+
+![Barramento no up-peak](docs/imagens/potencia_upeak_placa.png)
+
+Limitação conhecida: com as três cabines no teto ao mesmo tempo a ESP32 acusou
+"barramento em sobrecarga". A leitura de corrente tem ruído aditivo: com o duty
+parado ela passa da reta 300 + 56 × duty em até ~520 mA (p99) e ~700 mA (máximo),
+mais que os ~330 mA da folga de 10% a 54% de duty, e em 14 de 1500 leituras a
+corrente de uma cabine passou da Cota. Uma versão que descontava 700 mA de
+ruído (teto de 50% com Cota de 3800 mA) rodou uma vez e duas cabines ficaram
+paradas no térreo com "porta fora de nível"; sem os dados da rodada a causa não
+foi confirmada e a versão foi revertida.
+
+Na rasp41 a UART devolveu quadros corrompidos (CRC `FC FC`) com o sistema
+rodando, embora `/dev/serial0` aponte para a `ttyAMA0` a 115200 e uma leitura
+com tudo parado tenha funcionado; os cenários foram para a rasp52.
 
 ### No simulador
 
