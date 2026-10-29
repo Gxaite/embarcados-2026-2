@@ -278,8 +278,13 @@ class ServidorCentral:
         paradas = set(estado.get("paradas") or [])
         agora_de_parede = time.time()
         pendentes = self.registro.pendentes_da_cabine(cabine.numero)
+        # Com a porta aberta no andar, a ESP32 ja embarcou quem esperava ali; o
+        # evento so chega no relatorio seguinte. Contado como esperando, ele
+        # abria uma vaga que nao existe (8 a bordo e sobrecarga no simulador).
+        embarcando = estado.get("andar") if estado.get("nivelado") and \
+            estado.get("porta") in ("abrindo", "aberta") else None
         chamadas = [{"origem": c.origem, "destino": c.destino,
-                     "embarcada": c.embarque is not None,
+                     "embarcada": c.embarque is not None or c.origem == embarcando,
                      "idade_s": agora_de_parede - c.registro} for c in pendentes]
         for chamada in pendentes:
             paradas.add(chamada.destino if chamada.embarque else chamada.origem)

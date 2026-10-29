@@ -146,6 +146,19 @@ def test_teto_de_cruzeiro_usa_o_barramento():
     assert corrente_da_esp32(cota.duty_maximo) <= 4000 / cota_mod.FOLGA_DA_COTA
 
 
+def test_picos_raros_nao_travam_o_cruzeiro():
+    # rasp52: 56 mA por ponto em cruzeiro, picos raros de 80. Guardando o pior
+    # valor o teto caia a 42-49% com Cota de 3800 mA.
+    cota = cota_mod.CotaDePotencia(relogio=Relogio())
+    cota.recebe(3800, 2.0)
+    cota.mede_corrente(300, 0)
+    for i in range(200):
+        por_ponto = 80.0 if i % 25 == 0 else 56.0
+        cota.mede_corrente(300 + por_ponto * 50, 50)
+    assert cota.duty_maximo > 52
+    assert 300 + 56 * cota.duty_maximo <= 3800 / cota_mod.FOLGA_DA_COTA
+
+
 def test_teto_nunca_passa_da_formula():
     cota = cota_mod.CotaDePotencia(relogio=Relogio())
     cota.recebe(3000, 2.0)
@@ -349,6 +362,18 @@ def cabine_com_a_bordo(posicao, quantos, destino=0):
         {"origem": 5, "destino": destino, "embarcada": True, "idade_s": 0.0}
         for _ in range(quantos)]
     return estado
+
+
+def test_up_peak_agrupa_quem_vai_ao_mesmo_andar():
+    # Uma cabine no terreo com tres passageiros a embarcar para o 4, outra
+    # vazia ao lado: quem vai ao 2 iria parar a primeira no caminho dos tres,
+    # entao vai na vazia.
+    com_tres = estado_de_cabine(0.0)
+    com_tres["chamadas_do_central"] = [
+        {"origem": 0, "destino": 4, "embarcada": False, "idade_s": 5.0} for _ in range(3)]
+    escolhida, custos = despacho.escolhe({1: com_tres, 2: estado_de_cabine(0.0)},
+                                         origem=0, destino=2)
+    assert escolhida == 2 and custos[1] > custos[2]
 
 
 def test_despacho_respeita_a_lotacao():

@@ -60,11 +60,10 @@ FOLGA_DO_POUSO_MM = 60.0
 # Para trocar o destino no meio da viagem por uma parada nova no caminho.
 TEMPO_DE_FRENAGEM_S = 1.0
 FOLGA_DE_FRENAGEM_MM = 150.0
-# A leitura de corrente chega ate 0,5 s atrasada pelo central. Comparada com o
-# duty de agora numa desaceleracao, ela parecia alta demais e a cabine andava
-# mais devagar que a Cota permitia (rasp52). Ela e comparada com o maior duty
-# do ultimo 1 s, e so conta como corrente parada depois de 1 s parada.
-CICLOS_DA_JANELA_DE_DUTY = 20
+# A leitura de corrente chega ate 0,5 s atrasada pelo central: ela so conta se
+# o duty ficou estavel (dentro de 2 pontos) no ultimo 1,5 s.
+CICLOS_DA_JANELA_DE_DUTY = 30
+VARIACAO_DE_DUTY_ESTAVEL = 2.0
 
 
 def _imprime(texto):
@@ -438,8 +437,11 @@ class ServidorDistribuido:
                           "%s passageiros, %s kg)"
                           % (anterior, dados["falha"], dados.get("posicao_mm"),
                              dados.get("passageiros"), dados.get("carga_kg")))
-            duty = max((abs(d) for d in self._duties), default=abs(self.malha.comando))
-            self.cota.mede_corrente(dados.get("corrente_ma"), duty)
+            # So com o duty estavel na janela: na aceleracao a corrente de pico
+            # nao e a de cruzeiro, e a leitura chega ate 0,5 s atrasada.
+            if len(self._duties) == self._duties.maxlen and \
+                    max(self._duties) - min(self._duties) <= VARIACAO_DE_DUTY_ESTAVEL:
+                self.cota.mede_corrente(dados.get("corrente_ma"), self.malha.comando)
             if "porta_estado" in dados:
                 self.porta.registradores(dados["porta_estado"], self._relogio())
 

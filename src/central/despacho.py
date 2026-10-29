@@ -151,13 +151,15 @@ def custo(estado, origem, destino):
         return None
     espera = embarque + porta
     viagem = (desembarque if desembarque is not None else embarque) - embarque
-    # O atraso imposto a cada chamada ja atribuida, no proximo evento dela:
-    # o embarque de quem espera, o desembarque de quem esta a bordo.
+    # O atraso imposto a cada chamada ja atribuida: no embarque de quem espera
+    # e no desembarque de todas. Contado so no embarque, um destino novo nao
+    # custava nada a quem ainda ia embarcar no terreo, e no up-peak o despacho
+    # nao agrupava quem vai ao mesmo andar (pior espera de 92,4 s na rasp52).
     atraso = 0.0
     for i, (_, _, embarcada) in enumerate(chamadas):
-        k = 1 if embarcada else 0
-        if antes[i][k] is not None and depois[i][k] is not None:
-            atraso += max(0.0, depois[i][k] - antes[i][k])
+        for k in ((1,) if embarcada else (0, 1)):
+            if antes[i][k] is not None and depois[i][k] is not None:
+                atraso += max(0.0, depois[i][k] - antes[i][k])
     total = espera + PESO_DO_ATRASO_DOS_OUTROS * atraso + PESO_DA_VIAGEM * viagem
 
     limite = ESPERA_MAXIMA_S - FOLGA_DA_ESPERA_S

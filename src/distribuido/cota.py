@@ -24,18 +24,25 @@ enunciado reserva para o pouso de emergencia.
 """
 import threading
 import time
+from collections import deque
 
 CORRENTE_DE_ACELERACAO_PLENA_MA = 6000.0
 COTA_DO_MODO_DEGRADADO_MA = 1000.0
 VALIDADE_PADRAO_S = 2.0
 
 CORRENTE_PARADA_INICIAL_MA = 300.0
-# mA por ponto de duty. Comeca 10% acima dos 60 da formula, ate a primeira
-# medicao; a pior medida inclui o pico da partida (1,13 vez o de cruzeiro).
+# mA por ponto de duty: o percentil 90 das ultimas medidas com o duty estavel.
+# Na rasp52 a inclinacao em cruzeiro foi de 56 mA por ponto (p90 58), igual
+# subindo e descendo; o pior valor visto (70 a 81, em picos raros), guardado e
+# esquecido devagar, travava o cruzeiro em 42-49% de duty. Os picos ficam com
+# a folga da Cota e a reserva do barramento. Ate juntar medidas, 10% acima dos
+# 60 da formula.
 CORRENTE_POR_DUTY_INICIAL_MA = 66.0
 CORRENTE_POR_DUTY_MINIMA_MA = 30.0
 CORRENTE_POR_DUTY_MAXIMA_MA = 150.0
-QUEDA_POR_MEDICAO_MA = 0.05
+MEDIDAS_GUARDADAS = 40
+MEDIDAS_PARA_CONFIAR = 10
+PERCENTIL_DA_INCLINACAO = 0.9
 # Margem para o pico da partida sobre a corrente de cruzeiro (1,13 vez na
 # rasp52); com 5% os picos somados estouraram o barramento.
 FOLGA_DA_COTA = 1.10
@@ -65,11 +72,12 @@ class CotaDePotencia:
         self.sequencia = None
         self.corrente_parada_ma = CORRENTE_PARADA_INICIAL_MA
         self.corrente_por_duty_ma = CORRENTE_POR_DUTY_INICIAL_MA
+        self._inclinacoes = deque(maxlen=MEDIDAS_GUARDADAS)
 
     def mede_corrente(self, corrente_ma, duty):
         """Corrente medida (registrador corrente_ma) com o motor no duty `duty`,
-        em %. Parado, ela e a corrente de repouso; acima de 12%, da a
-        inclinacao."""
+        em %, estavel desde antes da leitura. Parado, ela e a corrente de
+        repouso; acima de 12%, da a inclinacao."""
         if corrente_ma is None:
             return
         duty = abs(duty)
@@ -80,9 +88,12 @@ class CotaDePotencia:
             if duty < DUTY_MINIMO_PARA_MEDIR:
                 return
             medida = (float(corrente_ma) - self.corrente_parada_ma) / duty
-            self.corrente_por_duty_ma = max(CORRENTE_POR_DUTY_MINIMA_MA, min(
-                CORRENTE_POR_DUTY_MAXIMA_MA,
-                max(medida, self.corrente_por_duty_ma - QUEDA_POR_MEDICAO_MA)))
+            self._inclinacoes.append(min(CORRENTE_POR_DUTY_MAXIMA_MA, medida))
+            ordenadas = sorted(self._inclinacoes)
+            inclinacao = ordenadas[int(PERCENTIL_DA_INCLINACAO * (len(ordenadas) - 1))]
+            if len(ordenadas) < MEDIDAS_PARA_CONFIAR:
+                inclinacao = max(inclinacao, CORRENTE_POR_DUTY_INICIAL_MA)
+            self.corrente_por_duty_ma = max(CORRENTE_POR_DUTY_MINIMA_MA, inclinacao)
 
     def recebe(self, cota_ma, validade_s=VALIDADE_PADRAO_S, sequencia=None):
         with self._trava:
