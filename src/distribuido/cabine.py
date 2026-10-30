@@ -57,7 +57,6 @@ CONCORDANCIA_DO_DESLIZE_MM = 25.0
 # Folga para escolher o andar de pouso no Modo Degradado: o andar tem de estar
 # a frente o bastante para a cabine frear nele a velocidade minima.
 FOLGA_DO_POUSO_MM = 60.0
-ANDAR_APOS_A_CALIBRACAO = 0
 # Para trocar o destino no meio da viagem por uma parada nova no caminho.
 TEMPO_DE_FRENAGEM_S = 1.0
 FOLGA_DE_FRENAGEM_MM = 150.0
@@ -208,11 +207,14 @@ class ServidorDistribuido:
             mapa.salva(self.configuracao["arquivo_de_calibracao"], self.numero)
         except OSError as erro:
             self._log("AVISO: calibracao nao foi salva: %s" % erro)
-        # Partindo do alto, a calibracao termina acima do andar 5; nivelada no
-        # mais proximo, a cabine ficava la em cima, longe de onde saem as
-        # chamadas.
-        self._log("assumindo o controle; indo nivelar no andar %d" % ANDAR_APOS_A_CALIBRACAO)
-        self.malha.vai_para(mapa.posicao[ANDAR_APOS_A_CALIBRACAO])
+        # Volta ao andar em que estava antes de calibrar. Mandadas as tres ao
+        # terreo, desciam juntas no teto e a ESP32 acusou sobrecarga (rasp47,
+        # 30/10/2026); espalhadas, ficam prontas para o Cenario de Trafego.
+        andar = self.calibracao.andar_de_partida
+        if andar is None:
+            andar = mapa.andar_mais_proximo(self.malha.posicao_mm)
+        self._log("assumindo o controle; voltando ao andar %d" % andar)
+        self.malha.vai_para(mapa.posicao[andar])
         self.andar_alvo = None
         self.modo = OPERANDO
 

@@ -79,7 +79,7 @@ python3 -m src.distribuido --cabine 3  # e a cabine que perde morre no import
 ```
 
 Ao conectar, cada cabine calibra sozinha (varredura de subida e de descida) e
-desce para nivelar no térreo; a partir daí atende as chamadas feitas no
+volta ao andar em que estava; a partir daí atende as chamadas feitas no
 quiosque do dashboard ou os Cenários de Tráfego.
 
 Comandos do painel do Servidor Central:
@@ -193,8 +193,8 @@ evento.
   pelo modelo de corrente que ela mede na ESP32 (repouso de ~300 mA mais
   ~54 mA por ponto de duty), o teto é o maior duty cuja corrente prevista cabe
   na Cota com 10% de folga, para o pico da partida.
-- O central reparte 95% de `barramento_max_ma` (o resto é reserva para os
-  picos de partida): 1000 mA para cada cabine, o resto
+- O central reparte 75% de `barramento_max_ma` (o resto é reserva para os
+  picos de partida e o ruído da leitura de corrente): 1000 mA para cada cabine, o resto
   para as que têm viagem, até 6000 mA cada. Uma Cota enviada conta como em uso
   até a cabine confirmar uma posterior (número de sequência no relatório) ou
   vencer: assim uma redução sempre chega antes do aumento que ela libera, e a
@@ -380,6 +380,13 @@ corrente de uma cabine passou da Cota. Uma versão que descontava 700 mA de
 ruído (teto de 50% com Cota de 3800 mA) rodou uma vez e duas cabines ficaram
 paradas no térreo com "porta fora de nível"; sem os dados da rodada a causa não
 foi confirmada e a versão foi revertida.
+
+Na rasp47 (30/10) a sobrecarga voltou com as três descendo ao térreo depois
+da calibração, a 54% de duty. A reserva do barramento subiu de 5% para 25%:
+com as três andando, cada uma recebe 3000 mA e cruza a ~43% (~2730 mA), e a
+soma fica em ~10300 mA mesmo com o ruído máximo nas três ao mesmo tempo. Uma
+ou duas cabines andando continuam no teto de 55%; o custo é a velocidade
+quando as três viajam juntas.
 
 Na rasp41 a UART devolveu quadros corrompidos (CRC `FC FC`) com o sistema
 rodando, embora `/dev/serial0` aponte para a `ttyAMA0` a 115200 e uma leitura

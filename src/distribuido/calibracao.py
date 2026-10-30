@@ -68,6 +68,9 @@ class Calibracao:
         self._travessias = {SUBIDA: [], DESCIDA: [], AO_FUNDO: []}
         self._aberta = None
         self._andar_inicial = None
+        # Andar em que a cabine estava quando a primeira calibracao comecou; uma
+        # retomada depois de perder o central nao o troca pelo meio do poco.
+        self.andar_de_partida = None
         self._parado_desde = None
         self._parando = False
         self._pedido_desde = None
@@ -129,6 +132,8 @@ class Calibracao:
             self._falha("o central nao respondeu o andar atual")
             return
         self._andar_inicial = andar
+        if self.andar_de_partida is None:
+            self.andar_de_partida = andar
         # So deixa a contagem legivel (perto de mm do poco); as posicoes saem
         # das bordas medidas.
         self._encoder.zera(int(mapa_mod.VAO_NOMINAL_MM * andar))

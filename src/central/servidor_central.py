@@ -38,8 +38,12 @@ EVENTOS_NA_TELA = 200
 CENARIO_UP_PEAK = 1                 # registrador cenario_ativo (Secao 5.3)
 # Parte do barramento que nao vira Cota: com ele inteiro repartido, os picos de
 # partida de duas cabines juntas passaram da capacidade e a ESP32 acusou
-# "barramento em sobrecarga" nas tres (rasp52, 28/10/2026).
-RESERVA_DO_BARRAMENTO = 0.05
+# "barramento em sobrecarga" nas tres (rasp52, 28/10/2026). Com 5% ela acusou
+# de novo com as tres descendo ao terreo depois da calibracao, a 54% de duty
+# (rasp47, 30/10/2026). Com 25% as tres juntas recebem 3000 mA, cruzam a ~43%
+# (~2730 mA cada) e, mesmo com o ruido maximo da leitura (+700 mA) nas tres ao
+# mesmo tempo, somam ~10300 mA. Uma ou duas andando continuam no teto do encoder.
+RESERVA_DO_BARRAMENTO = 0.25
 
 
 class Cabine:
